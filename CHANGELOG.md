@@ -14,3 +14,24 @@ v0.3.3
 v0.3.4
 - ADDED Sawtooth waveform for Ramp intrument
 - ADDED larger decimation for Scope instrument: up to 64 seconds time range
+
+v0.3.8
+- ADDED support for ecosystem 2.0 of RedPitaya (fpga.sh, fpga.bif, fpga.bit.bin built with bootgen)
+- FIXED APP name in the root Makefile (lock_in+pid_harmonic_hf)
+- Ecosystem 2.0 fixes, ported from rp_lock-in_pid_h v0.3.10
+  - FIXED E3: parameters are sent in chunks of at most 600 B (only changed and finite values, with retries)
+  - App status is probed with POST before polling /data; the App is started robustly (stop + 1.5 s + start + verification)
+  - ADDED "took control" detection when another client claims the board
+  - ADDED save and restore of the App state in the browser
+  - FIXED Config -> load; own localStorage key for this App
+  - reload_fpga is disabled in Ecosystem 2.0 (nginx returns 501)
+  - Cache-Control (no-cache) for index.html in nginx.conf
+  - main.c (GUI_XMIN/XMAX from rp_main_params) and Makefile updated for Ecosystem 2.0 (fpga.bit.bin, -lm -lpthread, fpga.sh executable)
+- Ported from rp_lock-in_pid_h2 v0.4.1
+  - Restart after "took control" restores the saved values when the intruder is the same App
+  - ADDED cautious mode: if /get_client_id is slow or fails, /data is not requested until the board answers fast again
+- FIXED second of two quick consecutive changes being lost while a POST was in flight
+- FIXED indicators (R, X, Y, phase, scope) frozen by the edit timer after leaving a field
+- FIXED Enter with an out-of-range value sending two POSTs (Enter is prevented, forms use novalidate)
+- FIXED mouse wheel: no longer sends single_btn, and SHIFT + wheel uses the right sign
+- FIXED duplicated POST when using the mouse wheel on a focused field

@@ -29,7 +29,7 @@ import os
 
 import enum
 
-APP='lock_in+pid_harmonic'
+APP='lock_in+pid_harmonic_hf'
 
 #%%
 

@@ -2,7 +2,7 @@
 # Red Pitaya specific application Makefile.
 #
 
-APP=lock_in+pid_harmonic
+APP=lock_in+pid_harmonic_hf
 
 -include _settings.env
 -include _build_number
