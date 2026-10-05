@@ -35,3 +35,13 @@ v0.3.8
 - FIXED Enter with an out-of-range value sending two POSTs (Enter is prevented, forms use novalidate)
 - FIXED mouse wheel: no longer sends single_btn, and SHIFT + wheel uses the right sign
 - FIXED duplicated POST when using the mouse wheel on a focused field
+
+v0.3.9
+- FIXED endless loop of POSTs (~15/s, it exhausted the nginx file descriptors) after loading a config of another App
+  or an incomplete one: the missing keys left NaN in the parameters, which counted as a change that was never sent
+  - Values that are not finite numbers (NaN, undefined, null, Infinity) are never a pending change
+  - Config -> load keeps the current value of the keys missing in the config (no empty selectors)
+  - The selectors never copy NaN to the parameters
+  - Guard in sendParams(): no POST without a real change less than 200 ms after the previous one, and at most
+    10 POST/s (a warning is logged in the console)
+  - The display tolerates missing values (lock_error_mean, lock_stream_rate)
