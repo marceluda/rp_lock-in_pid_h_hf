@@ -74,3 +74,43 @@ v2.3.10
   edits of src/main.h / src/main.c in the Makefile); only the App itself is built and packaged
 - CHANGED Makefile upload targets (as lock_in+pid_harmonic v2.3.15): `make upload RPIP=...`, rw of the OS
   (2.0 and 0.9x), check_rpip, fpga.sh keeps its exec bit; settings.sh loads Vivado 2015.2 only if present
+
+v2.3.11
+- Port of the lock / web UI / controller / remote control changes of lock_in+pid_harmonic v2.3.12 to v2.3.17 (see
+  its CHANGELOG for the details of each one; the "v2.3.12".."v2.3.17" in the comments of the sources are those of
+  lock_in+pid_harmonic). One step, as they were made and tested there. New FPGA image. Kept from v2.3.10: everything
+  HF (120-point modulation period, gen_mod_phase 0..119, PERIOD_LEN = 120, configs not migrated)
+- CHANGED the lock sequence runs entirely in the FPGA (lock_ctrl.v state machine OFF / ARMED / LOCKED): lock_control
+  (0x18) is command + configuration, never rewritten by the FPGA; 0x1C is now lock_status (read only, replaces
+  lock_feedback): [0] armed, [1] locked, [4:2] effective ramp / PID A / PID B enables, [15:8] lock counter. The C
+  controller writes lock_control only when the user changes it and reads the status on every request; the web UI
+  shows OFF / ARMED / LOCKED, Trigger Lock / Lock Now stay pressed while requested and a second click releases.
+  See lock_in+pid_harmonic_hf/doc/lock_control.md
+- CHANGED lock_ctrl.v registers its trigger inputs for timing (as lock_in+pid v2.2.6): ramp floor trigger (counter
+  loaded with 1 one clock later: Time trigger in the same clock as before) and the level / time comparisons (Level
+  trigger 1 clock = 8 ns later). The lock-in core (demodulation, filters) is not changed
+- CHANGED lock time trigger: 32 bits end to end (up to 2^32 - 1 ticks = 34.36 s)
+- ADDED Capture Lock (each lock request captures the closing of the loop in the scope, Ext Trig = "Lock control
+  trig", frozen until Auto / Single) and Fire on click. See lock_in+pid_harmonic_hf/doc/lock_capture.md
+- FIXED "Choose from graph" with any zoom / offset / time units; a click sets only the value of the trigger type;
+  the "Auto-zoom" option was removed
+- ADDED Time trigger / Level trigger fields with units (16.58 ms, 20 s, 0.1 V, 120 mV...); an emptied number field
+  is never sent as 0
+- FIXED Config -> load applies the scope window in the right units (seen by testAgent on v2.3.10 with the page in us)
+  and does not send forcex_flag / time_units / time_range / gui_x* nor the read-only params; the full config is sent
+  in chunks with the window applied from the answer of the last one
+- FIXED every POST reset the scope (a Single waiting for its trigger was disarmed); AUTO after a lock capture; aborted
+  auto-set; zoom-out right after a change of time units
+- CHANGED PID integrator divider label "6 us" -> "65 us"; descriptions of X / Y
+- ADDED HTTP remote control on Ecosystem 2.0: /osc writes TrgUnlock (0x94) and c/osc addresses registers by index;
+  register ranges in config_tool.py / c/lock.txt; resources/remote_control/http_version/control_finn.py of
+  lock_in+pid_harmonic v2.3.17 (scope_stop() / scope_auto(): the web scope is stopped before /osc acquisitions,
+  minimal POST /data sent in one packet, WebScopeNotStopped, host resolved once / resolve()), with
+  PERIOD_LEN = 120: set_freq() / set_freq_hz() / get_freq() / set_phase() use the HF period (1.04 MHz .. 63.6 Hz,
+  phase 0..119); example_usage.py with HF values (gen_mod_hp 5367 = 194 Hz, set_freq(20) = 49.6 kHz,
+  set_phase(30) = 90 deg) and the ramp of test_files/lock_in+pid_harmonic_hf__lock_mode.json
+- ADDED py/lock_from_registers.py (arm / lock now / release / status writing only FPGA registers); py/hugo.py
+  lock_status and osc.acq_done(); control_hugo.py launch_lock() / lock_now() / release_lock() / lock_status()
+- Tests (lock_in+pid_harmonic_hf/test/): xsim lock_ctrl_sim.sh and lock_bus_read_sim.sh; node lock_ctrl_ui_sim.js,
+  lock_capture_ui_sim.js, trig_input_units_sim.js, config_load_window_sim.js, trig_from_graph_sim.js;
+  auto_set_c_sim/run.sh (controller C on the PC)

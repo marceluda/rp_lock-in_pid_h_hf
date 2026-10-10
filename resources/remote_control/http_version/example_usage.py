@@ -2,39 +2,54 @@
 # -*- coding: utf-8 -*-
 """
 Example usage of remote control by control Finn
+
+Each "#%%" block is a cell (Spyder / VS Code / IPython): run them one by one.
+Tested with lock_in+pid_harmonic v2.3.15 on Ecosystem 2.0 (RedPitaya_OS 2.04); scope_stop()/scope_auto(): v2.3.16
+(same code in lock_in+pid_harmonic_hf v2.3.11; frequency / phase values adapted to the HF period of 120 points).
 """
 
+import os
+import json
+
+from time import sleep
 
 from control_finn import RedPitayaApp, reg_labels
 
 
 #%%  Connect to RP
 
+# URL of the App (as copied from the browser; '?type=run' is removed)
+URL = os.environ.get('RP_URL', 'http://rp-XXXXXX.local/lock_in+pid_harmonic_hf/?type=run')
+
+rp =  RedPitayaApp(URL)
+
+print(rp)
+print('Calibration constants read:', len(rp.calib))
 
 
-rp =  RedPitayaApp('http://rp-XXXXXX.local/lock_in+pid_harmonic_hf/?type=run')
 
-
-
-
-
-
-#%% Example configuration and acauisition #####################################
+#%% Example configuration and acquisition #####################################
 
 """
-WARNING:
-    befor any acquisition you should stop the Web oscilloscope by
-    making a single acquisition.
+The C controller of the App (the scope of the web page) keeps acquiring in Auto after the App is
+started, even with no web page open, and uses the same scope. osc.measure() / acquire() stop it first
+(trig_mode = 2, as a Single acquisition of the page): rp.scope_stop(). Give the scope back to the page
+with rp.scope_auto() (see the cell "Give the scope back to the web page" below).
+If it can not be confirmed stopped (no answer of POST /data), acquire() raises
+control_finn.WebScopeNotStopped and does not acquire: try again, or press Single in the web page.
 """
+
+print('scope of the web page, trig_mode (0 Auto, 1 Normal, 2 Single):', rp.scope_mode())
 
 rp.lock.oscA_sw = 'cos_ref'
 rp.lock.oscB_sw = 'sin_ref'
 
-rp.lock.gen_mod_hp = 255
+rp.lock.gen_mod_hp = 5367   # HF: 125 MHz / (120 * 5368) = 194 Hz (as gen_mod_hp = 255 in lock_in+pid_harmonic)
 
-rp.osc.measure('A_rising', dec=256 , trig_pos=20 , wait=True)
+# trigger on the rising edge of channel A (cos_ref) at 0, 20 samples before the trigger
+rp.osc.measure('A_rising', dec=256 , trig_pos=20 , threshold=0, wait=True)
 
-rp.wait_osc_finish()
+rp.wait_osc_finish()   # (already finished: wait=True above)
 
 tt, ch1, ch2 = rp.osc.curv()
 
@@ -49,19 +64,37 @@ rp.plot_meas()
 rp.lock.oscA_sw = 'cos_ref'
 rp.lock.oscB_sw = 'sin_ref'
 
-rp.lock.gen_mod_hp = 255
+rp.lock.gen_mod_hp = 5367   # HF: 125 MHz / (120 * 5368) = 194 Hz (as gen_mod_hp = 255 in lock_in+pid_harmonic)
 
-rp.osc.measure('A_rising', dec=256 , trig_pos=20 , wait=True)
-
-rp.wait_osc_finish()
-
-tt, ch1, ch2 = rp.osc.curv()
+# measure + wait + curv in one call. raw=False: Volts
+tt, ch1, ch2 = rp.acquire('A_rising', dec=256 , trig_pos=20, raw=False)
 
 
 from matplotlib import pyplot as plt
 
-
+plt.figure()
 plt.plot(tt,ch1,tt,ch2)
+
+
+#%% Manual trigger and external (lock module) trigger  #########################
+
+# manual: triggers at once, trigger in the middle of the trace
+tt, ch1, ch2 = rp.acquire('manual', dec=64, trig_pos=0.5)
+
+# external: the trigger made by the lock module (lock.trig_sw), e.g. the scan floor of the ramp
+rp.lock.trig_sw = 'Scan floor'
+tt, ch1, ch2 = rp.acquire('ext_rising', dec=1024, trig_pos=0.1, timeout=20)
+
+
+#%% Give the scope back to the web page  ######################################
+
+# The acquisitions above stopped the scope of the web page (C controller): restart it in Auto.
+rp.scope_auto()
+print('trig_mode:', rp.scope_mode())
+
+# To acquire from Python while the web page keeps its scope running (not recommended: the data
+# can be mixed), disable the automatic stop:
+#   rp.osc.auto_stop_web_scope = False      or      rp.acquire(..., stop_web_scope=False)
 
 
 #%% save data and load it later  ##############################################
@@ -71,7 +104,7 @@ plt.plot(tt,ch1,tt,ch2)
 rp.lock.oscA_sw = 'cos_ref'
 rp.lock.oscB_sw = 'sin_ref'
 
-rp.lock.gen_mod_hp = 255
+rp.lock.gen_mod_hp = 5367   # HF: 125 MHz / (120 * 5368) = 194 Hz (as gen_mod_hp = 255 in lock_in+pid_harmonic)
 
 rp.osc.measure('A_rising', dec=256 , trig_pos=20 , wait=True)
 
@@ -94,10 +127,72 @@ rp2 =  RedPitayaApp(fn)
 rp2.plot_meas()
 
 
-tt, ch1, ch2 = rp.osc.curv('last')
+tt, ch1, ch2 = rp2.osc.curv('last')
 plt.figure()
 plt.plot(tt,ch1,tt,ch2)
 
+
+
+#%% Lock-in: input, frequency, phase, filters, gains  #########################
+
+rp.set_signal('in1')                 # lock-in input (signal_sw)
+print('f =', rp.set_freq_hz(10e3), 'Hz')          # closest modulation frequency (gen_mod_hp)
+print('f =', rp.set_freq(20), 'Hz')                # or with the register value (HF: 20 -> 49.6 kHz, 0 -> 1.04 MHz)
+print('phase =', rp.set_phase(30), 'deg')          # cos_1f..3f phase (HF: 120 = 360 deg, 30 = 90 deg)
+rp.set_modulation_amplitud(-1, ch='out1')          # -1: no modulation added to OUT1
+
+rp.set_lpf(tau_exponent=15, order=2, line='ref')   # X, Y: tau = 8 ns * 2**15 = 262 us, 2nd order
+rp.set_lpf(tau_exponent=18, order=1, line='all')   # the four lines
+print(rp.get_lpf())                                # dict name -> (tau [s], order)
+print(rp.get_lpf('ref'))
+
+rp.set_gain('ref', 'x32')            # Xo, Yo = X, Y * 32
+print('X, Y [V] =', rp.get_XY())
+print('X, Y, F1, F2, F3 [int] =', rp.get_XY(units='int', F=True))
+
+
+#%% PID  ######################################################################
+
+rp.set_pid('A', sw='error', sp=0, kp=0, ki=0, kd=0, PSR='/1024', ISR='537 ms', DSR=0, SAT=13)
+print(rp.get_pid('A'))
+rp.pid_reset('A')                    # integrator reset
+
+rp.lock.error_sw = 'Yo'              # error signal = Yo
+rp.lock.out1_sw  = 'ctrl_A'          # OUT1 = PID A + ramp A
+
+
+#%% Ramp (scan)  ##############################################################
+
+# Same ramp as the lock_mode config (test_files/lock_in+pid_harmonic_hf__lock_mode.json): +-5000 counts with
+# step=400 gives a triangle of ~64 ms (scan floor every ~64 ms), so the 16.58 ms time trigger of the Lock cell
+# below falls inside the rising half. ramp_step is a divider of the period: a smaller step is a FASTER ramp
+# (step=100, +-4000 gives ~12.9 ms, shorter than 16.58 ms: the time trigger would never fire).
+rp.set_ramp(step=400, low=-5000, high=5000, sawtooth=False, enable=True)
+rp.set_manual(ramp=True, pidA=False, pidB=False)   # "Scan enable": the ramp runs, PIDs off
+print(rp.get_ramp())
+print(rp.lock_status())
+
+
+#%% Lock  #####################################################################
+
+# configuration: time trigger 16.58 ms after the scan floor, PID A on (ramp off) while locked. The time must be
+# shorter than half the period of the ramp (Ramp cell: ~64 ms); with dummy_simulator the peak is at ~16.3 ms.
+rp.lock_config(trig='time', time=16.58e-3, final=('pidA',))
+st = rp.lock_launch(timeout=10)      # Trigger Lock and wait for LOCKED
+print(st)                            # {'armed': False, 'locked': True, 'pidA': True, ...}
+
+rp.lock_release()                    # back to the manual enables (scan)
+
+# level trigger: error crossing 0.1 V upwards
+rp.lock_config(trig='level', level_V=0.1, signal='error', rise=True, final=('pidA',))
+rp.lock_launch()
+rp.wait_locked(timeout=10)
+rp.lock_release()
+
+# lock now
+rp.lock_now()
+print(rp.lock_status())
+rp.lock_release()
 
 
 #%% Get all the registers of Lock module in FPGA ##############################
@@ -107,9 +202,6 @@ all_lock_regs = rp.lock.get()
 
 
 #%% Interpretation of integers registers ######################################
-
-from control_finn import reg_labels
-
 
 for reg in 'oscA_sw oscB_sw'.split():
     value = rp.lock.get(reg)
@@ -127,8 +219,6 @@ for reg in 'oscA_sw oscB_sw'.split():
 
 
 #%% Load configuration from a web saved json ##################################
-
-import json
 
 fn = 'RP.json'
 

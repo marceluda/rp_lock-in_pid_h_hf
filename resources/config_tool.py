@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
 class fpga_register():
     """Register for FPGA module"""
-    def __init__(self, name, val=0, rw=True,  nbits=14, min_val=0, max_val=0, desc='todo', signed=False, fpga_update=True ,index=0, group='mix'):
+    def __init__(self, name, val=0, rw=True,  nbits=14, min_val=None, max_val=None, desc='todo', signed=False, fpga_update=True ,index=0, group='mix'):
         """Initialize attributes."""
         self.name        = name
         self.val         = val
@@ -91,9 +91,11 @@ class fpga_register():
         self.i           = index
         self.pos         = index*4
         self.addr        = "20'h{:05X}".format(index*4)
-        if min_val==0 and max_val==0:
-            self.min     =   - 2**(nbits-1) if signed else  0
-            self.min     =     2**(nbits-1) if signed else  2**nbits -1
+        # v2.3.15: default range of the bit width only when no range is given (it was "both 0", which
+        # left self.max undefined and did not allow a 0..0 range, e.g. rl_state)
+        if min_val is None and max_val is None:
+            self.min     =   - 2**(nbits-1)   if signed else  0
+            self.max     =     2**(nbits-1)-1 if signed else  2**nbits -1
         else:
             self.min         = min_val
             self.max         = max_val
@@ -103,6 +105,7 @@ class fpga_register():
         self.group       = group
         self.write_def   = True
         self.c_update    = None
+        self.c_block     = None   # if set: lines written as is in the FPGAUPDATE dock instead of 'g_lock_reg->name = c_update;'
         self.main_reg    = None
         self.reg_read    = False  # read from the copy <name>_reg (frozen by read_ctrl[0])
         self.rd_copy     = False  # read from the copy <name>_rd   (v2.3.10, registered only for the bus)
@@ -125,10 +128,11 @@ class fpga_registers():
         if type(key)==slice:
             return self.data[key]
 
-    def add(self, name, val=0, rw=True,  nbits=14, min_val=0, max_val=0, signed=False, desc='todo',fpga_update=True, group='mix'):
+    def add(self, name, val=0, rw=True,  nbits=14, min_val=None, max_val=None, signed=False, desc='todo',fpga_update=True, group='mix', index=None):
+        # index: register index = address offset / 4. Default: the next one (consecutive registers)
         self.data.append(fpga_register(name=name, val=val, rw=rw, nbits=nbits, group=group,
                                        min_val=min_val, max_val=max_val, signed=signed,
-                                       desc=desc, fpga_update=fpga_update , index=self.len ))
+                                       desc=desc, fpga_update=fpga_update , index=self.len if index is None else index ))
         self.names.append(name)
         self.len = len(self.names)
 
@@ -151,7 +155,7 @@ f = fpga_registers()
 grp='scope'
 f.add( name="oscA_sw"            , group=grp , val=    1, rw=True ,  nbits= 5, min_val=          0, max_val=         31, fpga_update=True , signed=False, desc="switch for muxer oscA" )
 f.add( name="oscB_sw"            , group=grp , val=    2, rw=True ,  nbits= 5, min_val=          0, max_val=         31, fpga_update=True , signed=False, desc="switch for muxer oscB" )
-f.add( name="osc_ctrl"           , group=grp , val=    3, rw=True ,  nbits= 2, min_val=          0, max_val= 4294967295, fpga_update=True , signed=False, desc="oscilloscope control\n[osc2_filt_off,osc1_filt_off]" )
+f.add( name="osc_ctrl"           , group=grp , val=    3, rw=True ,  nbits= 2, min_val=          0, max_val=          3, fpga_update=True , signed=False, desc="oscilloscope control\n[osc2_filt_off,osc1_filt_off]" )
 f.add( name="trig_sw"            , group=grp , val=    0, rw=True ,  nbits= 8, min_val=          0, max_val=        255, fpga_update=True , signed=False, desc="Select the external trigger signal" )
 
 
@@ -167,7 +171,8 @@ f.add( name="out2_sw"            , group=grp , val=    0, rw=True ,  nbits= 4, m
 # Lock control
 grp='lock_control'
 f.add( name="lock_control"       , group=grp , val= 1148, rw=True ,  nbits=11, min_val=          0, max_val=       2047, fpga_update=True , signed=False, desc="lock_control help" )
-f.add( name="lock_feedback"      , group=grp , val= 1148, rw=False,  nbits=11, min_val=          0, max_val=       2047, fpga_update=True , signed=False, desc="lock_control feedback" )
+# v2.3.13: lock_feedback (0x1C) replaced by the read only lock_status (doc/lock_control.md)
+f.add( name="lock_status"        , group=grp , val=   28, rw=False,  nbits=16, min_val=          0, max_val=      65535, fpga_update=True , signed=False, desc="lock control status (read only): [lock_count(8),0,0,0,ramp_enable,pidA_enable,pidB_enable,locked,armed]" )
 f.add( name="lock_trig_val"      , group=grp , val=    0, rw=True ,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=True , signed=True , desc="if lock_control ?? , this vals sets the voltage threshold that turns on the lock" )
 f.add( name="lock_trig_time"     , group=grp , val=    0, rw=True ,  nbits=32, min_val=          0, max_val= 4294967295, fpga_update=True , signed=False, desc="if lock_control ?? , this vals sets the time threshold that turns on the lock" )
 f.add( name="lock_trig_sw"       , group=grp , val=    0, rw=True ,  nbits= 4, min_val=          0, max_val=         15, fpga_update=True , signed=False, desc="selects signal for trigger" )
@@ -176,7 +181,8 @@ f.add( name="rl_error_threshold" , group=grp , val=    0, rw=True ,  nbits=13, m
 f.add( name="rl_signal_sw"       , group=grp , val=    0, rw=True ,  nbits= 3, min_val=          0, max_val=          7, fpga_update=True , signed=False, desc="selects signal for relock trigger" )
 f.add( name="rl_signal_threshold", group=grp , val=    0, rw=True ,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=True , signed=True , desc="Threshold for signal. Launchs relock when signal < rl_signal_threshold" )
 f.add( name="rl_config"          , group=grp , val=    0, rw=True ,  nbits= 3, min_val=          0, max_val=          7, fpga_update=True , signed=False, desc="Relock enable. [relock_reset,enable_signal_th,enable_error_th] " )
-f.add( name="rl_state"           , group=grp , val=    0, rw=False,  nbits= 5, min_val=          0, max_val=         31, fpga_update=False, signed=False, desc="Relock state: [state:idle|searching|failed,signal_fail,error_fail,locked] " )
+# v2.3.15: rl_state is fixed to 0 in lock.v (assign rl_state = 5'b0: Re-lock disabled), range 0..0
+f.add( name="rl_state"           , group=grp , val=    0, rw=False,  nbits= 5, min_val=          0, max_val=          0, fpga_update=False, signed=False, desc="Relock state: [state:idle|searching|failed,signal_fail,error_fail,locked] " )
 
 f.add( name="sf_jumpA"           , group=grp , val=    0, rw=True ,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=True , signed=True , desc="Step function measure jump value for ctrl_A" )
 f.add( name="sf_jumpB"           , group=grp , val=    0, rw=True ,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=True , signed=True , desc="Step function measure jump value for ctrl_B" )
@@ -250,8 +256,8 @@ f.add( name="oscA"               , group=grp , val=    0, rw=False,  nbits=14, m
 f.add( name="oscB"               , group=grp , val=    0, rw=False,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=True , signed=True , desc="signal for Oscilloscope Channel B" )
 
 grp='product_signals'
-f.add( name="X_28"               , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from sin_ref" )
-f.add( name="Y_28"               , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from cos_ref" )
+f.add( name="X_28"               , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from cos_ref (in phase)" )
+f.add( name="Y_28"               , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from sin_ref (quadrature)" )
 f.add( name="F1_28"              , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from cos_1f" )
 f.add( name="F2_28"              , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from cos_2f" )
 f.add( name="F3_28"              , group=grp , val=    0, rw=False,  nbits=28, min_val= -134217728, max_val=  134217727, fpga_update=True , signed=True , desc="Demodulated signal from cos_3f" )
@@ -263,7 +269,8 @@ f.add( name="read_ctrl"          , group=grp , val=    0, rw=True ,  nbits= 3, m
 
 # PID Control
 grp='pidA'
-f.add( name="pidA_sw"            , group=grp , val=    0, rw=True ,  nbits= 5, min_val=          0, max_val=         31, fpga_update=True , signed=False, desc="switch selector for pidA input" )
+# v2.3.15: 4 bits (0..15), the width of the sel input of muxer4 (it was 5 bits, 16..31 aliased to 0..15)
+f.add( name="pidA_sw"            , group=grp , val=    0, rw=True ,  nbits= 4, min_val=          0, max_val=         15, fpga_update=True , signed=False, desc="switch selector for pidA input" )
 f.add( name="pidA_PSR"           , group=grp , val=    3, rw=True ,  nbits= 3, min_val=          0, max_val=          4, fpga_update=True , signed=False, desc="pidA PSR" )
 f.add( name="pidA_ISR"           , group=grp , val=    8, rw=True ,  nbits= 4, min_val=          0, max_val=          9, fpga_update=True , signed=False, desc="pidA ISR" )
 f.add( name="pidA_DSR"           , group=grp , val=    0, rw=True ,  nbits= 3, min_val=          0, max_val=          5, fpga_update=True , signed=False, desc="pidA DSR" )
@@ -278,7 +285,8 @@ f.add( name="pidA_ctrl"          , group=grp , val=    0, rw=True ,  nbits= 3, m
 f.add( name="ctrl_A"             , group=grp , val=    0, rw=False,  nbits=14, min_val=      -8192, max_val=       8191, fpga_update=False, signed=True , desc="control_A: pidA_out + ramp_A" )
 
 grp='pidB'
-f.add( name="pidB_sw"            , group=grp , val=    0, rw=True ,  nbits= 5, min_val=          0, max_val=         31, fpga_update=True , signed=False, desc="switch selector for pidB input" )
+# v2.3.15: 4 bits (0..15), the width of the sel input of muxer4 (it was 5 bits, 16..31 aliased to 0..15)
+f.add( name="pidB_sw"            , group=grp , val=    0, rw=True ,  nbits= 4, min_val=          0, max_val=         15, fpga_update=True , signed=False, desc="switch selector for pidB input" )
 f.add( name="pidB_PSR"           , group=grp , val=    3, rw=True ,  nbits= 3, min_val=          0, max_val=          4, fpga_update=True , signed=False, desc="pidB PSR" )
 f.add( name="pidB_ISR"           , group=grp , val=    8, rw=True ,  nbits= 4, min_val=          0, max_val=          9, fpga_update=True , signed=False, desc="pidB ISR" )
 f.add( name="pidB_DSR"           , group=grp , val=    0, rw=True ,  nbits= 3, min_val=          0, max_val=          5, fpga_update=True , signed=False, desc="pidB DSR" )
@@ -329,7 +337,7 @@ for i in ['X_28', 'Y_28', 'F1_28', 'F2_28', 'F3_28',
 # v2.3.10 (bus fix of lock_in+pid_harmonic v2.3.17): read-only signals that are wires (combinational, or registered in another module)
 # are read by the bus from a registered copy <name>_rd (always block "bus read copies" of
 # lock.v), so the read mux of sys_rdata only has registers at its inputs
-for i in ['lock_feedback', 'error_mean', 'error_std', 'ramp_A', 'ramp_B',
+for i in ['lock_status', 'error_mean', 'error_std', 'ramp_A', 'ramp_B',
           'sin_ref', 'cos_ref', 'cos_1f', 'cos_2f', 'cos_3f',
           'in1', 'in2', 'out1', 'out2', 'oscA', 'oscB',
           'pidA_in', 'pidA_out', 'pidB_in', 'pidB_out']:
@@ -736,12 +744,15 @@ m.add( name="lock_out2_sw"       , fpga_reg="out2_sw"       , val=0    , rw=True
 # m.add( name="lock_slow_out4_sw"  , fpga_reg="slow_out4_sw"  , val=0    , rw=True , nbits=4 , min_val=0         , max_val=15        , fpga_update=True , signed=False, group="outputs"        , desc="switch for muxer slow_out4")
 
 # group: lock_control
-m.add( name="lock_lock_control"  , fpga_reg="lock_control"  , val=1148 , rw=True , nbits=11, min_val=0         , max_val=2047      , fpga_update=True , signed=False, group="lock_control"   , desc="lock_control help")
-m.add( name="lock_lock_feedback" , fpga_reg="lock_feedback" , val=1148 , rw=False, nbits=11, min_val=0         , max_val=2047      , fpga_update=False, signed=False, group="lock_control"   , desc="lock_control feedback")
+# v2.3.13: lock_lock_control is a read only mirror of the register, which is composed from lock_ctrl_aux_*
+m.add( name="lock_lock_control"  , fpga_reg="lock_control"  , val=1148 , rw=False, nbits=11, min_val=0         , max_val=2047      , fpga_update=True , signed=False, group="lock_control"   , desc="lock_control (read only mirror, written from lock_ctrl_aux_*)")
+m.add( name="lock_lock_status"   , fpga_reg="lock_status"   , val=28   , rw=False, nbits=16, min_val=0         , max_val=65535     , fpga_update=False, signed=False, group="lock_control"   , desc="lock control status: [lock_count(8),0,0,0,ramp_enable,pidA_enable,pidB_enable,locked,armed]")
 m.add( name="lock_lock_trig_val" , fpga_reg="lock_trig_val" , val=0    , rw=True , nbits=14, min_val=-8192     , max_val=8191      , fpga_update=True , signed=True , group="lock_control"   , desc="if lock_control ?? , this vals sets the voltage threshold that turns on the lock")
 m.add( name="lock_lock_trig_time_val", fpga_reg="lock_trig_time", val=0    , rw=True , nbits=32, min_val=0         , max_val=4294967295, fpga_update=True , signed=False, group="lock_control"   , desc="if lock_control ?? , this vals sets the time threshold that turns on the lock")
 r.main_reg='lock_'+r.name
-r=f["lock_trig_time" ]; r.c_update='(int)params[{:30s}].value'.format( m['lock_lock_trig_time_val'].cdef )
+# v2.3.15: unsigned 32 bits (it was (int): values >= 2**31 saturated to 2**31-1). The float parameter is converted
+# through int64_t (defined for the whole range) and 4294967295 (4294967296.0f as float) saturates to 0xffffffff.
+r=f["lock_trig_time" ]; r.c_update='lock_float_to_u32(params[{:s}].value)'.format( m['lock_lock_trig_time_val'].cdef )
 
 m.add( name="lock_lock_trig_sw"  , fpga_reg="lock_trig_sw"  , val=0    , rw=True , nbits=4 , min_val=0         , max_val=15        , fpga_update=True , signed=False, group="lock_control"   , desc="selects signal for trigger")
 
@@ -756,7 +767,7 @@ r=m["lock_rl_signal_enable"]; r.c_update='(float) ((g_lock_reg->{:s} >> 1 )& 0x0
 r=m["lock_rl_reset"        ]; r.c_update='(float) ((g_lock_reg->{:s} >> 2 )& 0x01)'.format(r.fpga_reg)
 r=f["rl_config"            ]; r.c_update='(((int)params[{:s}].value) << 2 ) + (((int)params[{:s}].value) << 1 ) + ((int)params[{:s}].value)'.format( m["lock_rl_reset"].cdef , m["lock_rl_signal_enable"].cdef , m["lock_rl_error_enable"].cdef )
 
-m.add( name="lock_rl_state"           ,fpga_reg="rl_state"           ,val=0,rw=False,nbits=5 ,min_val=0        , max_val=31        , fpga_update=False, signed=False, group="lock_control"   , desc="Relock state: [state:idle|searching|failed,signal_fail,error_fail,locked] ")
+m.add( name="lock_rl_state"           ,fpga_reg="rl_state"           ,val=0,rw=False,nbits=5 ,min_val=0        , max_val=0         , fpga_update=False, signed=False, group="lock_control"   , desc="Relock state: [state:idle|searching|failed,signal_fail,error_fail,locked] ")
 
 m.add( name="lock_sf_jumpA"            , fpga_reg="sf_jumpA"            , val=0    , rw=True , nbits=14, min_val=-8192     , max_val=8191      , fpga_update=True , signed=True , group="lock_control"   , desc="Step function measure jump value for ctrl_A")
 m.add( name="lock_sf_jumpB"            , fpga_reg="sf_jumpB"            , val=0    , rw=True , nbits=14, min_val=-8192     , max_val=8191      , fpga_update=True , signed=True , group="lock_control"   , desc="Step function measure jump value for ctrl_B")
@@ -856,8 +867,8 @@ m.add( name="lock_oscA"          , fpga_reg="oscA"          , val=0    , rw=Fals
 m.add( name="lock_oscB"          , fpga_reg="oscB"          , val=0    , rw=False, nbits=14, min_val=-8192     , max_val=8191      , fpga_update=False, signed=True , group="inout"          , desc="signal for Oscilloscope Channel B")
 
 # group: product_signals
-m.add( name="lock_X_28"         , fpga_reg="X_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from sin_ref")
-m.add( name="lock_Y_28"         , fpga_reg="Y_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from cos_ref")
+m.add( name="lock_X_28"         , fpga_reg="X_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from cos_ref (in phase)")
+m.add( name="lock_Y_28"         , fpga_reg="Y_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from sin_ref (quadrature)")
 m.add( name="lock_F1_28"         , fpga_reg="F1_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from cos_1f")
 m.add( name="lock_F2_28"         , fpga_reg="F2_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from cos_2f")
 m.add( name="lock_F3_28"         , fpga_reg="F3_28"         , val=0    , rw=False, nbits=28, min_val=-134217728, max_val=134217727 , fpga_update=False, signed=True , group="product_signals", desc="Demodulated signal from cos_3f")
@@ -866,7 +877,7 @@ m.add( name="lock_cnt_clk2"      , fpga_reg="cnt_clk2"      , val=0    , rw=Fals
 m.add( name="lock_read_ctrl"     , fpga_reg="read_ctrl"     , val=0    , rw=True , nbits=3 , min_val=0          , max_val=7         , fpga_update=True , signed=False, group="product_signals", desc="[unused,start_clk,Freeze]")
 
 # group: pidA
-m.add( name="lock_pidA_sw"       , fpga_reg="pidA_sw"       , val=0    , rw=True , nbits=5 , min_val=0         , max_val=31        , fpga_update=True , signed=False, group="pidA"           , desc="switch selector for pidA input")
+m.add( name="lock_pidA_sw"       , fpga_reg="pidA_sw"       , val=0    , rw=True , nbits=4 , min_val=0         , max_val=15        , fpga_update=True , signed=False, group="pidA"           , desc="switch selector for pidA input")
 m.add( name="lock_pidA_PSR"      , fpga_reg="pidA_PSR"      , val=3    , rw=True , nbits=3 , min_val=0         , max_val=4         , fpga_update=True , signed=False, group="pidA"           , desc="pidA PSR")
 m.add( name="lock_pidA_ISR"      , fpga_reg="pidA_ISR"      , val=8    , rw=True , nbits=4 , min_val=0         , max_val=9         , fpga_update=True , signed=False, group="pidA"           , desc="pidA ISR")
 m.add( name="lock_pidA_DSR"      , fpga_reg="pidA_DSR"      , val=0    , rw=True , nbits=3 , min_val=0         , max_val=5         , fpga_update=True , signed=False, group="pidA"           , desc="pidA DSR")
@@ -890,7 +901,7 @@ r=f["pidA_ctrl"]; r.c_update='(((int)params[{:s}].value)<<2) + (((int)params[{:s
 m.add( name="lock_ctrl_A"        , fpga_reg="ctrl_A"        , val=0    , rw=False, nbits=14, min_val=-8192     , max_val=8191      , fpga_update=False, signed=True , group="pidA"           , desc="control_A: pidA_out + ramp_A")
 
 # group: pidB
-m.add( name="lock_pidB_sw"       , fpga_reg="pidB_sw"       , val=0    , rw=True , nbits=5 , min_val=0         , max_val=31        , fpga_update=True , signed=False, group="pidB"           , desc="switch selector for pidB input")
+m.add( name="lock_pidB_sw"       , fpga_reg="pidB_sw"       , val=0    , rw=True , nbits=4 , min_val=0         , max_val=15        , fpga_update=True , signed=False, group="pidB"           , desc="switch selector for pidB input")
 m.add( name="lock_pidB_PSR"      , fpga_reg="pidB_PSR"      , val=3    , rw=True , nbits=3 , min_val=0         , max_val=4         , fpga_update=True , signed=False, group="pidB"           , desc="pidB PSR")
 m.add( name="lock_pidB_ISR"      , fpga_reg="pidB_ISR"      , val=8    , rw=True , nbits=4 , min_val=0         , max_val=9         , fpga_update=True , signed=False, group="pidB"           , desc="pidB ISR")
 m.add( name="lock_pidB_DSR"      , fpga_reg="pidB_DSR"      , val=0    , rw=True , nbits=3 , min_val=0         , max_val=5         , fpga_update=True , signed=False, group="pidB"           , desc="pidB DSR")
@@ -925,27 +936,19 @@ m.add( name="lock_stream_cmd"    , fpga_reg="stream_cmd"    , val=0    , rw=True
 
 
 
-m.add(name="lock_ctrl_aux_lock_now"         , val=0 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_launch_lock_trig" , val=0 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_pidB_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_pidA_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_ramp_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_set_pidB_enable"  , val=1 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_set_pidA_enable"  , val=1 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_set_ramp_enable"  , val=0 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_trig_type"        , val=0 , max_val=3 , fpga_update=False, fpga_reg='lock_feedback')
-m.add(name="lock_ctrl_aux_lock_trig_rise"   , val=0 , max_val=1 , fpga_update=False, fpga_reg='lock_feedback')
-
-m['lock_ctrl_aux_lock_now'        ].c_update='(float) (( g_lock_reg->lock_feedback >> 0 ) & 0x01 )'
-m['lock_ctrl_aux_launch_lock_trig'].c_update='(float) (( g_lock_reg->lock_feedback >> 1 ) & 0x01 )'
-m['lock_ctrl_aux_pidB_enable_ctrl'].c_update='(float) (( g_lock_reg->lock_feedback >> 2 ) & 0x01 )'
-m['lock_ctrl_aux_pidA_enable_ctrl'].c_update='(float) (( g_lock_reg->lock_feedback >> 3 ) & 0x01 )'
-m['lock_ctrl_aux_ramp_enable_ctrl'].c_update='(float) (( g_lock_reg->lock_feedback >> 4 ) & 0x01 )'
-m['lock_ctrl_aux_set_pidB_enable' ].c_update='(float) (( g_lock_reg->lock_feedback >> 5 ) & 0x01 )'
-m['lock_ctrl_aux_set_pidA_enable' ].c_update='(float) (( g_lock_reg->lock_feedback >> 6 ) & 0x01 )'
-m['lock_ctrl_aux_set_ramp_enable' ].c_update='(float) (( g_lock_reg->lock_feedback >> 7 ) & 0x01 )'
-m['lock_ctrl_aux_trig_type'       ].c_update='(float) (( g_lock_reg->lock_feedback >> 8 ) & 0x03 )'
-m['lock_ctrl_aux_lock_trig_rise'  ].c_update='(float) (( g_lock_reg->lock_feedback >>10 ) & 0x01 )'
+# v2.3.13: bits of lock_control (command + configuration, never rewritten from the FPGA state).
+# Not refreshed in the PARAMSUPDATE dock: lock_update_status() (src/lock.c) copies them from the
+# register only when lock_control was written from outside the controller (Python, c/lock, monitor).
+m.add(name="lock_ctrl_aux_lock_now"         , val=0 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_launch_lock_trig" , val=0 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_pidB_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_pidA_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_ramp_enable_ctrl" , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_set_pidB_enable"  , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_set_pidA_enable"  , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_set_ramp_enable"  , val=0 , max_val=1 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_trig_type"        , val=0 , max_val=3 , fpga_update=False, fpga_reg=None)
+m.add(name="lock_ctrl_aux_lock_trig_rise"   , val=0 , max_val=1 , fpga_update=False, fpga_reg=None)
 
 
 m.add(name="lock_mod_harmonic_on" , val=1 , max_val=1 , fpga_update=False, fpga_reg=None)
@@ -981,6 +984,31 @@ for i,ii in enumerate([ 'lock_ctrl_aux_lock_now',
                         'lock_ctrl_aux_trig_type']):
     f['lock_control'].c_update+=' '*43+'((int)params[{:30s}].value)   *  {:>4d}  + \n'.format(m[ii].cdef,2**i)
 f['lock_control'].c_update+=' '*43+'((int)params[{:30s}].value)   *  {:>4d}  ) '.format(m['lock_ctrl_aux_lock_trig_rise'].cdef,2**10)
+# v2.3.13: written only when the value composed from lock_ctrl_aux_* changes (lock_control_written, src/lock.c),
+# so an unrelated change does not rewrite a value written to the register from outside the controller
+f['lock_control'].c_block = ('{ /* v2.3.13: lock_control is command + configuration (doc/lock_control.md). Written only when\n'
+                             '   * the value composed from lock_ctrl_aux_* changes (keep this block if the dock is regenerated) */\n'
+                             '    uint32_t lc = (uint32_t) (\n'+
+                             ' +\n'.join( ' '*8+'((int)params[{:30s}].value) * {:>4d}'.format(m[ii].cdef,2**(i if i<9 else 10))
+                                         for i,ii in enumerate([ 'lock_ctrl_aux_lock_now', 'lock_ctrl_aux_launch_lock_trig',
+                                                                 'lock_ctrl_aux_pidB_enable_ctrl', 'lock_ctrl_aux_pidA_enable_ctrl',
+                                                                 'lock_ctrl_aux_ramp_enable_ctrl', 'lock_ctrl_aux_set_pidB_enable',
+                                                                 'lock_ctrl_aux_set_pidA_enable', 'lock_ctrl_aux_set_ramp_enable',
+                                                                 'lock_ctrl_aux_trig_type', 'lock_ctrl_aux_lock_trig_rise' ]) )+' );\n'
+                             '    if (lc != lock_control_written) {\n'
+                             '        g_lock_reg->lock_control = lc;\n'
+                             '        lock_control_written     = lc;\n'
+                             '    }\n'
+                             '}')
+f['stream_ip'].c_block = ('{ /* v2.3.10: stream_ip is a full uint32 written exactly by c/lock; params are\n'
+                          '   * float (24-bit mantissa) and (int) of a value >= 2^31 saturates. Write it\n'
+                          '   * only if the param is not the float echo of the register (keep this block\n'
+                          '   * if the FPGAUPDATE dock is regenerated with config_tool.py). */\n'
+                          '    float ip_v = params[LOCK_STREAM_IP].value;\n'
+                          '    if (ip_v != (float)g_lock_reg->stream_ip)\n'
+                          '        g_lock_reg->stream_ip = (ip_v <= 0.0f) ? 0u :\n'
+                          '                                (ip_v >= 4294967296.0f) ? 0xffffffffu : (uint32_t)ip_v;\n'
+                          '}')
 
 
 
@@ -1006,7 +1034,10 @@ def main_update_params(indent=1):
 def main_update_fpga(indent=1):
     txt=txt_buff(n=indent)
     for r in f:
-        if r.rw:
+        if r.rw and r.c_block:
+            for line in r.c_block.split('\n'):
+                txt.add(line)
+        elif r.rw:
             txt.add('g_lock_reg->{:25s} = {:25s};'.format(r.name,r.c_update) )
         else:
             txt.add_comment('g_lock_reg->{:25s} = {:25s};'.format(r.name,r.c_update) )
@@ -1220,7 +1251,8 @@ osc.add(  name='TrgSrc'   ,val=1 ,rw=True,nbits= 4,signed=False, max_val=  16, m
 osc.add(  name='ChAth'    ,val=2 ,rw=True,nbits=14,signed=True , max_val=  8192, min_val=  -8192 )
 osc.add(  name='ChBth'    ,val=3 ,rw=True,nbits=14,signed=True , max_val=  8192, min_val=  -8192 )
 osc.add(  name='TrgDelay' ,val=4 ,rw=True,nbits=32,signed=False, max_val=  2**32-1, min_val=  0 )
-osc.add(  name='Dec'      ,val=5 ,rw=True,nbits=17,signed=False, max_val=  2**17-1, min_val=  0 )
+# v2.3.15: 20-bit decimation register in the 2.0 FPGA (rp_scope_cfg.v, set_dec[20-1:0]). The App uses up to 524288
+osc.add(  name='Dec'      ,val=5 ,rw=True,nbits=20,signed=False, max_val=  2**20-1, min_val=  0 )
 osc.add(  name='CurWpt'   ,val=6 ,rw=True,nbits=14,signed=False, max_val=  2**14-1, min_val=  0 )
 osc.add(  name='TrgWpt'   ,val=7 ,rw=True,nbits=14,signed=False, max_val=  2**14-1, min_val=  0 )
 osc.add(  name='ChAHys'   ,val=8 ,rw=True,nbits=14,signed=False, max_val=  2**14-1, min_val=  0 )
@@ -1235,6 +1267,10 @@ osc.add(  name='ChBEqFil1',val=16,rw=True,nbits=18,signed=False, max_val=  2**18
 osc.add(  name='ChBEqFil2',val=17,rw=True,nbits=25,signed=False, max_val=  2**25-1, min_val=  0 )
 osc.add(  name='ChBEqFil3',val=18,rw=True,nbits=25,signed=False, max_val=  2**25-1, min_val=  0 )
 osc.add(  name='ChBEqFil4',val=19,rw=True,nbits=25,signed=False, max_val=  2**25-1, min_val=  -0 )
+# v2.3.15: trigger unlock of the 2.0 scope (offset 0x94, rp_scope_cfg.v trig_dis_clr; src/fpga.h trigger_lock_ctr).
+# Write only: writing 1 re-enables the trigger, which locks itself after every trigger (TrgSrc bit 5 reads 1).
+# Reads 0. In the 0.9x scope 0x94 is unmapped (the write is ignored).
+osc.add(  name='TrgUnlock',val=0 ,rw=True,nbits= 1,signed=False, max_val=  1, min_val=  0, index=0x94//4 )
 
 
 
@@ -1869,12 +1905,12 @@ h["lock_lpf_F2_order"   ].control = select(idd="lock_lpf_F2_order"    ,items=['O
 h["lock_lpf_F3_order"   ].control = select(idd="lock_lpf_F3_order"    ,items=['OFF', '1', '2'])
 
 h["lock_pidA_PSR"].control = select(idd="lock_pidA_PSR",items=['/1','/8','/64','/1024','/4096'])
-h["lock_pidA_ISR"].control = select(idd="lock_pidA_ISR",items=['8 ns','64 ns','512 ns','8 us','6 us','524 us','8 ms','67 ms','537 ms','9 s'])
+h["lock_pidA_ISR"].control = select(idd="lock_pidA_ISR",items=['8 ns','64 ns','512 ns','8 us','65 us','524 us','8 ms','67 ms','537 ms','9 s'])
 h["lock_pidA_DSR"].control = select(idd="lock_pidA_DSR",items=['7.5 ns','60 ns','480 ns','7.68 us','61.44 us','491.5 us'])
 h["lock_pidA_SAT"].control = select(idd="lock_pidA_SAT",items=['&plusmn;122uV','&plusmn;244uV','&plusmn;488uV','&plusmn;977uV','&plusmn;2mV','&plusmn;4mV','&plusmn;8mV','&plusmn;16mV','&plusmn;31mV','&plusmn;62mV','&plusmn;125mV','&plusmn;250mV','&plusmn;500mV','&plusmn;1 V'])
 
 h["lock_pidB_PSR"].control = select(idd="lock_pidB_PSR",items=['/1','/8','/64','/1024','/4096'])
-h["lock_pidB_ISR"].control = select(idd="lock_pidB_ISR",items=['8 ns','64 ns','512 ns','8 us','6 us','524 us','8 ms','67 ms','537 ms','9 s'])
+h["lock_pidB_ISR"].control = select(idd="lock_pidB_ISR",items=['8 ns','64 ns','512 ns','8 us','65 us','524 us','8 ms','67 ms','537 ms','9 s'])
 h["lock_pidB_DSR"].control = select(idd="lock_pidB_DSR",items=['7.5 ns','60 ns','480 ns','7.68 us','61.44 us','491.5 us'])
 h["lock_pidB_SAT"].control = select(idd="lock_pidB_SAT",items=['&plusmn;122uV','&plusmn;244uV','&plusmn;488uV','&plusmn;977uV','&plusmn;2mV','&plusmn;4mV','&plusmn;8mV','&plusmn;16mV','&plusmn;31mV','&plusmn;62mV','&plusmn;125mV','&plusmn;250mV','&plusmn;500mV','&plusmn;1 V'])
 

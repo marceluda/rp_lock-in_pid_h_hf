@@ -41,13 +41,13 @@ https://marceluda.github.io/rp_lock-in_pid/TheApp/install/
 
 ## Version 2.3.x (Ecosystem 2.0)
 
-Current version: **2.3.10** (branch `devel2.0`).
+Current version: **2.3.11** (branch `devel2.0`).
 
 This version is **based on the 0.3.x series (v0.3.9), with the FPGA design built in Vivado 2020.1**,
 using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/RedPitaya-FPGA)
 (project `v0.94`, model `Z10`), the same port done in
-[rp_lock-in_pid_h](https://github.com/marceluda/rp_lock-in_pid_h) v2.3.x (its v2.3.10 and v2.3.11, plus
-the bus read fix of its v2.3.17). It is intended for the Red Pitaya **Ecosystem 2.0** (e.g. `RedPitaya_OS_2.04`).
+[rp_lock-in_pid_h](https://github.com/marceluda/rp_lock-in_pid_h) v2.3.x: v2.3.11 has all the changes of its
+v2.3.10 to v2.3.17 (lock sequence in the FPGA, Capture Lock, HTTP remote control on Ecosystem 2.0...). It is intended for the Red Pitaya **Ecosystem 2.0** (e.g. `RedPitaya_OS_2.04`).
 The 0.3.x series (branch `master`, FPGA with Vivado 2015.2) is the version for the 0.9x / 1.0 ecosystems.
 
 - HF: the harmonic modulation has a period of 120 table points (lock_in+pid_harmonic: 2520), so its
@@ -57,6 +57,10 @@ The 0.3.x series (branch `master`, FPGA with Vivado 2015.2) is the version for t
   Ecosystem 2.0 (trigger lock, decimation widened to 20 bits), bus reads of the lock module held during the
   read. Registers of the lock module unchanged.
 - Only the App itself is packaged (the `_DEBUG` and `_RELOAD` flavours were removed).
+- Lock control in the FPGA (`lock_status` at 0x1C replaces `lock_feedback`): see
+  [lock_control.md](lock_in+pid_harmonic_hf/doc/lock_control.md) and [lock_capture.md](lock_in+pid_harmonic_hf/doc/lock_capture.md).
+- Remote control from a PC over HTTP: `resources/remote_control/http_version/control_finn.py` and
+  `example_usage.py` (frequencies and phases with the HF period of 120 points).
 - See the [CHANGELOG](CHANGELOG.md).
 
 
