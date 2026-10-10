@@ -16,7 +16,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Harmonic lock-in+PID HF (v0.3.9)</title>
+  <title>Harmonic lock-in+PID HF (v2.3.10)</title>
   <link href="../assets/bootstrap-3.0.0/css/bootstrap.css" rel="stylesheet" type="text/css">
   <link href="../assets/style.css?6" rel="stylesheet" type="text/css">
   <script src="../assets/bootstrap-3.0.0/js/jquery.js"></script>
@@ -58,16 +58,6 @@
                                          // headers and body in one write only if both fit in ~1400 B (headers ~500-800 B)
   var post_chunk_timeout = 2000;         // Milliseconds, per POST chunk. A healthy POST answers in ~10 ms; a hung one never
   var post_chunk_retries = 2;            // Retries of a chunk that timed out (values are absolute, so it is safe)
-  var last_post_end = 0;                 // Date.now() when the last sendParams() POST ended (anti-loop guard)
-  // Anti-loop guard of sendParams(). A NaN in params.local (config without some keys -> <select> without selection)
-  // once made an endless loop of POSTs (~15/s) that filled the fds of the nginx worker (CLOSE-WAIT) and killed it.
-  // A POST without any real change (only always_send_params) less than post_min_gap_ms after the end of the
-  // previous POST is not sent, and at most post_max_per_s POSTs per second are sent (more are deferred, console.warn).
-  var post_min_gap_ms = 200;
-  var post_max_per_s = 10;
-  var post_starts = [];                  // Date.now() of the POSTs started by sendParams() in the last second
-  var post_rate_timer = null;            // Deferred sendParams() (post_max_per_s reached)
-  var post_rate_args = null;             // Its arguments (OR of the deferred calls)
   var always_send_params = ['single_btn', 'xmin', 'xmax', 'lock_lock_control'];  // Sent in every POST, even if
                                          // unchanged: loadParams() overrides them locally, so server may differ
   var last_send_params = ['single_btn', 'auto_flag'];  // Go in the last POST when params are split
@@ -87,7 +77,9 @@
   var time_range_max = [130, 1000, 8, 16,  33,  67, 130,  1,  8, 64 ];
   var range_steps = [0.5, 1, 2, 5, 10, 20, 50, 100];
 
-  PERIOD_LEN = 120 ;
+
+
+  PERIOD_LEN = 120 ;   // lock_in+pid_harmonic_hf: period of the harmonic modulation, in table points (2520 in lock_in+pid_harmonic)
 
   function secondYaxis(v, axis) {
       if(params.local.lock_osc_lockin_mode){
@@ -121,6 +113,7 @@
   var scope_stop = false;
   var sending = false;
   var send_que = false;
+  var single_que = false;  // a Single click arrived while a POST was in flight: send it when the POST ends
   var send_que_all = false;              // The queued sendParams() must use send_all (config load during a POST)
   var use_long_timeout = false;
   var trig_dragging = false;
@@ -133,14 +126,31 @@
   var last_claim_check = 0;
   var claim_supported = true;            // false in 0.9x (no /set_client_id endpoint)
   var claim_timeout = 1500;              // Milliseconds, /get_client_id timeout (healthy answer: ~10 ms)
-  var claim_fast_ms = 500;               // A /get_client_id answer slower than this -> cautious mode
+  var claim_fast_ms = 500;               // A /get_client_id answer slower than this is 'slow' (see checkClaim)
+  // A /get_client_id that overlapped one of our POST /data (in flight, or ended less than post_overlap_ms before
+  // it started) may just be queued behind it (same browser, nginx worker busy in rp_set_params): its slowness is
+  // not measured, a slow answer with our id counts as 'own' (a failure or another id still count).
+  var post_inflight = 0;                 // POST /data requests in flight (postParamsChunks, probeApp)
+  var last_post_end = 0;                 // Date.now() when the last POST /data ended
+  var post_overlap_ms = 200;
+  // Anti-loop guard of sendParams(). A NaN in params.local (config without some keys -> <select> without selection)
+  // once made an endless loop of POSTs (~15/s) that filled the fds of the nginx worker (CLOSE-WAIT) and killed it.
+  // A POST without any real change (only always_send_params) less than post_min_gap_ms after the end of the
+  // previous POST is not sent, and at most post_max_per_s POSTs per second are sent (more are deferred, console.warn).
+  var post_min_gap_ms = 200;
+  var post_max_per_s = 10;
+  var post_starts = [];                  // Date.now() of the POSTs started by sendParams() in the last second
+  var post_rate_timer = null;            // Deferred sendParams() (post_max_per_s reached)
+  var post_rate_args = null;             // Its arguments (OR of the deferred calls)
   // Cautious mode (2.0): a slow/failed /get_client_id means nginx is busy, usually an App change in progress
-  // (main_menu loading). A GET /data then may hit main_menu and crash the nginx worker (signal 11). No GET /data:
-  // re-check every cautious_delay ms and resume after cautious_need consecutive fast answers with our id.
+  // (main_menu loading). A GET /data then may hit main_menu and crash the nginx worker (signal 11). A single
+  // slow/failed answer is retried at once (checkClaimConfirm, no GET /data meanwhile); if the retry is slow or
+  // fails too: no GET /data, re-check every cautious_delay ms and resume after cautious_need consecutive fast
+  // answers with our id.
   var cautious_mode = false;
-  var cautious_delay = 3000;             // Milliseconds between /get_client_id checks in cautious mode
+  var cautious_delay = 1000;             // Milliseconds between /get_client_id checks in cautious mode
   var cautious_need = 2;                 // Consecutive fast answers with our id needed to leave it
-  var cautious_max_checks = 10;          // Checks without leaving it -> error modal (Retry/Restart), never frozen
+  var cautious_max_checks = 20;          // Checks without leaving it (~20-50 s) -> error modal (Retry/Restart), never frozen
   var cautious_ok = 0;
   var cautious_checks = 0;
   var cautious_timer = null;
@@ -151,6 +161,14 @@
   var app_check_pending = false;
   var start_retries = 3;                 // bazaar?start attempts (2.0: the worker may die during the start)
   var state_key = 'lockin_state_' + app_id;  // sessionStorage key of the last server-confirmed settings
+  // Transient commands: never saved in the state nor restored by Restart; forced to 0 by restoreState()
+  // and Config -> load (a restored stream_cmd = 1 froze the scope after a Restart: the worker leaves the
+  // scope to c/stream_tcp_osc_cmd while it is != 0). lock_stream_ip is handled apart (see stream_ip_exact).
+  var state_transient_zero = ['lock_stream_cmd', 'lock_ctrl_aux_lock_now', 'lock_ctrl_aux_launch_lock_trig'];
+  // Streaming IP as an exact uint32. The server params are float (24-bit mantissa): its echo of
+  // 3089104906 (10.0.32.184) is 3089104896 (0.0.32.184). Set when the user enters the IP, saved in the
+  // state as state_stream_ip and written back with GET /lock?stream_ip= after a Restart. 0 = unknown.
+  var stream_ip_exact = 0;
   // sessionStorage flag: Restart after onControlLost() -> restoreState() even if our App is still loaded
   // (another tab of this same App took control). While set, saveState() does not overwrite state_key.
   var restore_pending_key = 'lockin_restore_pending_' + app_id;
@@ -1363,6 +1381,7 @@
             $(this).parent().removeClass('input-group');
             if(ValidateIPaddress($(this).val())) {
               params.local[iname] = IPtoInt32($(this).val()) ;
+              stream_ip_exact     = params.local[iname] ;   // exact value for saveState()
               //sendParams();
               $.get( "lock",  { stream_ip: params.local[iname] }).done( function( data ) {
                 console.log(data);
@@ -1464,6 +1483,7 @@
         $.get( "check_streaming", function check_streaming( data ) {
           //console.log("check_streaming:"+data);
           if( parseInt(data) == 0 ){  // if process is active:
+              $('#disp_stream_status').removeClass('label-danger').addClass('label-info');
               $('#stream_connect').removeClass('btn-default').addClass('btn-primary');
               setTimeout( function(){ $.get( "check_streaming", check_streaming ) } , 500  );
           }else if(parseInt(data)<0){
@@ -1690,6 +1710,7 @@
 
     // Load first data
     if(window.location.href[0]!='f'){
+      initStreamIp();  // Exact streaming IP of the last state of this tab (survives Restart without restore)
       claimBoard().always(resumeApp);  // Claim, then probe which App is loaded before any GET /data
     } else{
       $('#bottom_panel').find('select').prop('disabled', false); // LOLO lock panel
@@ -1732,7 +1753,7 @@
     for (jj = 0; jj < 4 ; ++jj) {
         rta = rta + (  parseInt(ip_array[jj])<<(jj*8)  ) ;
     }
-    return (rta) ;
+    return (rta >>> 0) ;  // unsigned 32 bits (c/lock parses stream_ip as uint32)
   }
 
   function Int32toIP(IP){
@@ -2603,10 +2624,11 @@
   // loaded, or null if there was no (usable) answer.
   function probeApp() {
     var dfd = $.Deferred();
+    post_inflight++;
     $.ajax({ type: 'POST', url: post_url, data: JSON.stringify({ datasets: { params: {} } }),
              timeout: post_chunk_timeout, cache: false })
-    .done(function(d) { dfd.resolve(d && d.app ? (d.app.id || '') : null); })   // '' = no App loaded
-    .fail(function() { dfd.resolve(null); });
+    .done(function(d) { postEnd(); dfd.resolve(d && d.app ? (d.app.id || '') : null); })   // '' = no App loaded
+    .fail(function() { postEnd(); dfd.resolve(null); });
     return dfd.promise();
   }
 
@@ -2616,18 +2638,30 @@
       if(id === app_id) {
         app_check_pending = false;  // probeApp() confirmed our App: GET /data allowed again
         if(isRestorePending()) { restoreState(); }  // Restart after onControlLost(): restore, no stop/start
-        else { app_started = true; control_lost = false; updateGraphData(); }  // already running: keep its state
+        else { readStreamIp(); app_started = true; control_lost = false; updateGraphData(); }  // already running: keep its state
       }
       else { startApp(1, id); }
     });
   }
 
-  // Resolves (st, ms, text_status). st: 'own' | 'lost' | 'slow' (our id, but answered in >= claim_fast_ms) |
+  // End of one of our POST /data (see post_inflight)
+  function postEnd() {
+    if(post_inflight > 0) post_inflight--;
+    last_post_end = Date.now();
+  }
+
+  // A /get_client_id started at t0 and answered now overlapped one of our POST /data (see post_overlap_ms)
+  function claimOverlapsPost(t0) {
+    return post_inflight > 0 || (last_post_end > 0 && last_post_end >= t0 - post_overlap_ms);
+  }
+
+  // Resolves (st, ms, text_status, overlapped). st: 'own' | 'lost' | 'slow' (our id, but answered in >= claim_fast_ms) |
   // 'unknown' (failed or aborted: nginx busy, e.g. during /bazaar?apps=). 0.9x has no endpoint -> 'own'.
-  // Outside cautious mode, checks closer than claim_check_period resolve 'own' without a request.
-  function checkClaim() {
+  // A slow answer with our id that overlapped a POST /data resolves 'own' with overlapped = true.
+  // Outside cautious mode, checks closer than claim_check_period resolve 'own' without a request (unless force).
+  function checkClaim(force) {
     var dfd = $.Deferred();
-    if(!claim_supported || (!cautious_mode && Date.now() - last_claim_check < claim_check_period))
+    if(!claim_supported || (!cautious_mode && force !== true && Date.now() - last_claim_check < claim_check_period))
       return dfd.resolve('own', 0).promise();
     var t0 = Date.now();
     $.ajax({ url: root_url + '/get_client_id', timeout: claim_timeout, cache: false, dataType: 'text' })
@@ -2635,7 +2669,12 @@
       var ms = Date.now() - t0;
       last_claim_check = Date.now();
       if(String(msg).trim() !== client_id) dfd.resolve('lost', ms);
-      else dfd.resolve(ms < claim_fast_ms ? 'own' : 'slow', ms);
+      else if(ms < claim_fast_ms) dfd.resolve('own', ms);
+      else if(claimOverlapsPost(t0)) {
+        console.log('/get_client_id slow (' + ms + ' ms) during a POST /data: not measured, our id');
+        dfd.resolve('own', ms, undefined, true);
+      }
+      else dfd.resolve('slow', ms);
     })
     .fail(function(xhr, text_status) {
       last_claim_check = 0;
@@ -2646,6 +2685,26 @@
 
   function describeClaim(st, ms, text_status) {
     return '/get_client_id ' + (st === 'slow' ? 'slow' : 'failed (' + (text_status || 'error') + ')') + ' in ' + ms + ' ms';
+  }
+
+  // checkClaim() outside cautious mode: a single slow/failed /get_client_id is not enough, it is retried at once
+  // (the caller does no GET /data meanwhile). Resolves (st, ms, text_status, reason): 'slow'/'unknown' only if
+  // the retry is slow or fails too (reason describes both); 'own'/'lost' as soon as one answer says so.
+  function checkClaimConfirm() {
+    var dfd = $.Deferred();
+    checkClaim().done(function(st, ms, text_status) {
+      if(st === 'own' || st === 'lost') {
+        dfd.resolve(st, ms, text_status);
+        return;
+      }
+      var first = describeClaim(st, ms, text_status);
+      console.log(first + ', retrying at once');
+      checkClaim(true).done(function(st2, ms2, text_status2) {
+        if(st2 === 'own' || st2 === 'lost') dfd.resolve(st2, ms2, text_status2);
+        else dfd.resolve(st2, ms2, text_status2, first + '; retry: ' + describeClaim(st2, ms2, text_status2));
+      });
+    });
+    return dfd.promise();
   }
 
   // No GET /data until cautious_need consecutive fast /get_client_id answers with our id (see cautious_mode)
@@ -2681,7 +2740,7 @@
     if(!cautious_mode || cautious_busy) return;
     if(control_lost) { leaveCautious('control lost'); return; }
     cautious_busy = true;
-    checkClaim().done(function(st, ms, text_status) {
+    checkClaim().done(function(st, ms, text_status, overlapped) {
       cautious_busy = false;
       if(!cautious_mode) return;
       if(st === 'lost') {
@@ -2690,7 +2749,10 @@
         return;
       }
       cautious_checks++;
-      if(st === 'own') {
+      if(st === 'own' && overlapped) {  // slow, but queued behind our POST /data: neither fast nor a busy nginx
+        console.log('Cautious mode: /get_client_id took ' + ms + ' ms during a POST /data, not counted');
+      }
+      else if(st === 'own') {
         if(++cautious_ok >= cautious_need) {
           var probe = cautious_probe;
           leaveCautious(cautious_ok + ' fast /get_client_id answers with our id (last ' + ms + ' ms)' +
@@ -2737,25 +2799,108 @@
     } catch(e) {}
   }
 
+  // Last saved state of this tab (or null)
+  function loadSavedState() {
+    var saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(state_key)); } catch(e) {}
+    return (saved && typeof saved === 'object') ? saved : null;
+  }
+
+  // Valid exact streaming IP (uint32 > 0) or 0
+  function validStreamIp(v) {
+    v = Number(v);
+    return (v >= 1 && v <= 4294967295 && Math.floor(v) === v) ? v : 0;
+  }
+
+  // Page load: stream_ip_exact and the IP input from the saved state of this tab. Without it a Restart that
+  // finds our App still loaded (no restoreState()) left stream_ip_exact = 0, and saveState() then dropped
+  // state_stream_ip: the next real restart wrote 0 to the register (testAgent 2026-10-03 16:25).
+  function initStreamIp() {
+    var saved = loadSavedState();
+    var ip = saved ? validStreamIp(saved.state_stream_ip) : 0;
+    if(ip) {
+      stream_ip_exact = ip;
+      $('#lock_stream_ip').val( Int32toIP(ip) );
+    }
+  }
+
+  // App already running: the register is the reference (exact uint32 through GET /lock?stream_ip). The float
+  // echo of /data is not used (inexact). Register 0 or no answer: the value of initStreamIp() is kept.
+  // No cache:false here: its '_=' arg would reach c/lock as an unknown register name.
+  function readStreamIp() {
+    $.ajax({ url: 'lock?stream_ip', timeout: 3000, dataType: 'text', headers: { 'Cache-Control': 'no-cache' } })
+    .done(function(txt) {
+      var m = /stream_ip:(\d+)/.exec(String(txt));
+      var ip = m ? validStreamIp(m[1]) : 0;
+      if(ip && !$('#lock_stream_ip').is(':focus')) {
+        stream_ip_exact = ip;
+        $('#lock_stream_ip').val( Int32toIP(ip) );
+      }
+    })
+    .fail(function() { console.log('readStreamIp: could not read the streaming IP register'); });
+  }
+
   // Last server-confirmed user settings (same keys as Config save). sessionStorage: per tab, survives
   // location.reload() (Restart), is not shared with other tabs and is cleared when the tab is closed.
   function saveState(srv, force) {
     if(!srv || (force !== true && Date.now() - last_state_save < 2000)) return;
     if(isRestorePending()) return;  // Keep the state to restore (the board may have another tab's settings)
+    // Values that cannot be taken from this answer keep the previously saved ones (never dropped)
+    var prev = loadSavedState() || {};
     var s = {};
     for(var i in config_params_keys) {
       var k = config_params_keys[i];
       if(srv[k] !== null && srv[k] !== undefined && isFinite(srv[k])) s[k] = Number(srv[k]);
+      else if(prev[k] !== undefined && isFinite(prev[k]))               s[k] = Number(prev[k]);
+    }
+    // Transient commands and the float echo of the streaming IP are not saved (see state_transient_zero).
+    for(var ti = 0; ti < state_transient_zero.length; ti++) delete s[ state_transient_zero[ti] ];
+    delete s.lock_stream_ip;
+    // Exact streaming IP, only while the server echo still matches it (a float32 of a value < 2^32 is
+    // within 128 of it). Otherwise (stream_ip_exact unknown, or the register changed by someone else: c/lock,
+    // another tab) the previously saved exact IP is kept: it must not be dropped (see initStreamIp()).
+    var ip_srv = Number(srv.lock_stream_ip);
+    if(stream_ip_exact > 0 && isFinite(ip_srv) && Math.abs(ip_srv - stream_ip_exact) <= 256)
+      s.state_stream_ip = stream_ip_exact;
+    else if(validStreamIp(prev.state_stream_ip))
+      s.state_stream_ip = validStreamIp(prev.state_stream_ip);
+    // Time scale: xmin/xmax are in [time_units] (0 us, 1 ms, 2 s), which the server picks from the decimation.
+    // Also saved in seconds: restoreState() converts them to the units the server uses after the restart.
+    var tu = Number(srv.time_units);
+    if(isFinite(srv.xmin) && isFinite(srv.xmax) && (tu === 0 || tu === 1 || tu === 2) &&
+       Number(srv.xmax) > Number(srv.xmin)) {
+      s.state_xmin_s = Number(srv.xmin) / timeUnitFactor(tu);
+      s.state_xmax_s = Number(srv.xmax) / timeUnitFactor(tu);
+    }
+    else if(isFinite(prev.state_xmin_s) && isFinite(prev.state_xmax_s) && Number(prev.state_xmax_s) > Number(prev.state_xmin_s)) {
+      s.state_xmin_s = Number(prev.state_xmin_s);
+      s.state_xmax_s = Number(prev.state_xmax_s);
     }
     try { sessionStorage.setItem(state_key, JSON.stringify(s)); last_state_save = Date.now(); } catch(e) {}
   }
 
+  // GUI time units (0 us, 1 ms, 2 s) -> factor from seconds (same as the server: 10^(3*(2-time_units)))
+  function timeUnitFactor(tu) {
+    return Math.pow(10, 3 * (2 - tu));
+  }
+
   // After each start: send def_params + the saved state (the server side App starts with its static defaults)
   function restoreState() {
-    var p = $.extend({}, def_params), saved = null;
-    try { saved = JSON.parse(sessionStorage.getItem(state_key)); } catch(e) {}
+    var p = $.extend({}, def_params), saved = loadSavedState(), x_s = null, ip_restore = 0;
     if(saved) {
       $.extend(p, saved);
+      // Time scale saved in seconds: sent last, converted to the server units (see below). The saved
+      // xmin/xmax are in the units of the old session, which the restarted server may not be using.
+      if(isFinite(saved.state_xmin_s) && isFinite(saved.state_xmax_s) && saved.state_xmax_s > saved.state_xmin_s) {
+        x_s = [ Number(saved.state_xmin_s), Number(saved.state_xmax_s) ];
+        delete p.xmin;
+        delete p.xmax;
+      }
+      delete p.state_xmin_s;
+      delete p.state_xmax_s;
+      // Exact streaming IP: written with GET /lock?stream_ip= after the POSTs (not as a float param)
+      ip_restore = validStreamIp(saved.state_stream_ip);
+      delete p.state_stream_ip;
       /* LOLO load_config_block_start */
       // Same safety rule as Config -> load: an unexpected restart should not close the loops by itself
       if(load_config_block_start == 1) {
@@ -2767,10 +2912,32 @@
         p.lock_ctrl_aux_launch_lock_trig = 0;   // lock_control[1]: would arm the lock trigger
       }
     }
+    // Always (also with states saved by older versions): transient commands to 0, no float streaming IP
+    for(var ti = 0; ti < state_transient_zero.length; ti++) p[ state_transient_zero[ti] ] = 0;
+    delete p.lock_stream_ip;
+    // With a saved exact IP: also posted (as the IP input does), so that the server param holds its float
+    // value and the controller does not overwrite the exact register written by /lock afterwards (it
+    // writes stream_ip only when the param differs from the float of the register, see src/lock.c)
+    if(ip_restore) p.lock_stream_ip = ip_restore;
     // Split in several sequential POSTs if needed (Ecosystem 2.0 hangs with big POST bodies)
     postParamsChunks(splitParams(p), post_chunk_timeout, post_chunk_retries)
+    .then(function(dresult) {
+      // Time scale last, in the units the server uses now (time_units is read-only on the server side). The
+      // server picks the decimation from it and, if the units change, forces the new range (forcex_flag).
+      var srv = (dresult && dresult.datasets) ? dresult.datasets.params : null;
+      if(!x_s || !srv || !isFinite(srv.time_units)) return dresult;
+      var f = timeUnitFactor(Number(srv.time_units));
+      return postParamsChunks([ { xmin: x_s[0] * f, xmax: x_s[1] * f } ], post_chunk_timeout, post_chunk_retries);
+    })
     .done(function() {
       setRestorePending(false);
+      if(ip_restore) {
+        // Exact uint32 through c/lock (as the IP input does); the server echo then reads it back
+        stream_ip_exact = ip_restore;
+        $('#lock_stream_ip').val( Int32toIP(ip_restore) );
+        $.get( "lock", { stream_ip: ip_restore } )
+        .fail(function() { console.log('restoreState: could not restore the streaming IP'); });
+      }
       app_started = true;
       control_lost = false;
       auto_restarts = 0;
@@ -2849,15 +3016,15 @@
     downloading = true;
 
     // Ecosystem 2.0: check we still own the board before GET /data (another App loaded -> worker crash)
-    checkClaim().done(function(st, ms, text_status) {
+    checkClaimConfirm().done(function(st, ms, text_status, reason) {
       if(st === 'lost') {
         downloading = false;
         onControlLost();
         return;
       }
-      if(st !== 'own') {  // 'slow' | 'unknown': nginx busy (App change?), GET /data could crash the worker
+      if(st !== 'own') {  // 'slow' | 'unknown' twice: nginx busy (App change?), GET /data could crash the worker
         downloading = false;
-        enterCautious(describeClaim(st, ms, text_status));
+        enterCautious(reason || describeClaim(st, ms, text_status));
         return;
       }
       doGetData();
@@ -2883,12 +3050,12 @@
         // "Application not loaded": restart only if we still own the board (no ping-pong with main_menu)
         app_check_pending = true;  // no GET /data until probeApp() (POST) confirms our App is loaded
         last_claim_check = 0;  // force a fresh check
-        checkClaim().done(function(st, ms, text_status) {
+        checkClaimConfirm().done(function(st, ms, text_status, reason) {
           if(st === 'lost') {
             onControlLost();
           }
           else if(st !== 'own') {  // nginx busy: maybe an App change in progress, wait before deciding
-            enterCautious('Application not loaded, ' + describeClaim(st, ms, text_status), true);
+            enterCautious('Application not loaded, ' + (reason || describeClaim(st, ms, text_status)), true);
           }
           else if(!app_started || auto_restarts++ < 2) {  // our own board: the worker died or the App was unloaded
             app_started = false;
@@ -2905,12 +3072,12 @@
           var other_app_id = dresult.app.id;
           app_check_pending = true;  // no GET /data until probeApp() (POST) confirms our App is loaded
           last_claim_check = 0;  // force a fresh check
-          checkClaim().done(function(st, ms, text_status) {
+          checkClaimConfirm().done(function(st, ms, text_status, reason) {
             if(st === 'lost') {
               onControlLost();
             }
             else if(st !== 'own') {  // nginx busy: maybe an App change in progress, wait before deciding
-              enterCautious('loaded App is ' + other_app_id + ', ' + describeClaim(st, ms, text_status), true);
+              enterCautious('loaded App is ' + other_app_id + ', ' + (reason || describeClaim(st, ms, text_status)), true);
             }
             else if(!app_started || auto_restarts++ < 2) {
               app_started = false;
@@ -3642,6 +3809,7 @@
     var tries_left = max_retries;
 
     function postNext() {
+      post_inflight++;
       $.ajax({
         type: 'POST',
         url: post_url,
@@ -3650,6 +3818,7 @@
         cache: false
       })
       .done(function(dresult) {
+        postEnd();
         i++;
         tries_left = max_retries;
         if(i < chunks.length && dresult.datasets !== undefined && dresult.datasets.params !== undefined) {
@@ -3660,6 +3829,7 @@
         }
       })
       .fail(function(xhr, status) {
+        postEnd();
         if(status === 'timeout' && tries_left > 0) {
           tries_left--;
           console.warn('postParamsChunks: chunk ' + (i+1) + '/' + chunks.length + ' timed out, retrying (' +
@@ -3682,6 +3852,12 @@
     }
     if(sending ||(force_send !== true && send_all !== true && !isParamChanged())) {
       send_que = sending;
+      // v2.3.10: do not lose a Single click made while another POST is in flight
+      // (e.g. the one of the trig_mode change: the first Single after switching
+      // to Single mode gave no trace)
+      if(sending && single_btn === true) {
+        single_que = true;
+      }
       if(sending && send_all === true) send_que_all = true;  // the queued call must send all too
       return;
     }
@@ -3789,6 +3965,7 @@
       else if(dresult.status == 'ERROR') {
         showModalError((dresult.reason ? dresult.reason : 'Error while sending data (E1).'), false, true, true);
         send_que = false;
+        single_que = false;
         send_que_all = false;
       }
       else {
@@ -3800,7 +3977,6 @@
     })
     .always(function() {
       sending = false;
-      last_post_end = Date.now();
       // user_editing_update (wheel): keep the edit mode only if an input still has the focus (blur may come
       // during the POST: true here then would never go back to false)
       user_editing = (user_editing_update ? editFocusActive() : false);
@@ -3810,8 +3986,15 @@
         var que_all = send_que_all;
         send_que = false;
         send_que_all = false;
+        var do_single = single_que;
+        single_que = false;
         setTimeout(function(refresh_data) {
-          sendParams(refresh_data, false, false, false, que_all);
+          if(do_single) {
+            sendParams(true, true, true, false, que_all);
+          }
+          else {
+            sendParams(refresh_data, false, false, false, que_all);
+          }
         }, 100);
       }
     });
@@ -3971,8 +4154,9 @@
           plot.getPlaceholder(),
           filterData(datasets, plot.width()),
           $.extend(true, plot_options, {
-            xaxis: { min: options.xaxes[0].min, max: options.xaxes[0].max },
-            yaxis: { min: options.yaxes[0].min, max: options.yaxes[0].max }
+            xaxis:  { min: options.xaxes[0].min, max: options.xaxes[0].max },
+            yaxis:  { min: options.yaxes[0].min, max: options.yaxes[0].max },
+            yaxis2: { min: options.yaxes[0].min, max: options.yaxes[0].max }
           })
         );
         updateTriggerSlider();
@@ -4050,8 +4234,9 @@
     var ymin = ymax * -1;
 
     $.extend(true, plot_options, {
-      xaxis: { min: null, max: null },
-      yaxis: { min: ymin, max: ymax }
+      xaxis:  { min: null, max: null },
+      yaxis:  { min: ymin, max: ymax },
+      yaxis2: { min: ymin, max: ymax }
     });
 
     var options = plot.getOptions();
@@ -4207,6 +4392,19 @@
 
     $('#trigger_tooltip').data('bs.tooltip').options.title = plot.getAxes().yaxis.c2p(y).toFixed(trigger_level_xdecimal_places);
     $('#trigger_tooltip').tooltip('show');
+
+    var plot_pholder = plot.getPlaceholder();
+    var axes = plot.getAxes();
+    plot = $.plot(
+      plot_pholder,
+      plot.getData(),
+      $.extend(true, plot_options, {
+        xaxis:  { min: axes.xaxis.min, max: axes.xaxis.max },
+        yaxis:  { min: axes.yaxis.min, max: axes.yaxis.max },
+        y2axis: { min: axes.yaxis.min, max: axes.yaxis.max }
+      })
+    );
+    
   }
 
   function mouseUpOut(evt) {
@@ -4683,6 +4881,14 @@
       params.storage[num].data['lock_ctrl_aux_launch_lock_trig']   = 0 ;  // would arm the lock trigger
     }
     // */
+    // Transient commands are never loaded from a config (a saved stream_cmd = 1 would freeze the scope),
+    // and the saved streaming IP is a float echo (inexact): the current one is kept.
+    for(var ti = 0; ti < state_transient_zero.length; ti++)
+      params.storage[num].data[ state_transient_zero[ti] ] = 0 ;
+    if(params.local && params.local.lock_stream_ip !== undefined)
+      params.storage[num].data['lock_stream_ip'] = params.local.lock_stream_ip ;
+    else
+      delete params.storage[num].data['lock_stream_ip'] ;
     user_editing = true;
     //sending = true;
 
@@ -4873,7 +5079,7 @@
     <div class="container">
       <a id="btn_exit" class="pull-left" href="/index.html"><span class="glyphicon glyphicon-chevron-left" title="Exit" alt="Exit"></span></a>
       <img class="logo pull-left" src="../assets/images/logo_white.png">
-      <h2 class="page-title">Harmonic lock-in+PID HF (v0.3.9)</h2>
+      <h2 class="page-title">Harmonic lock-in+PID HF (v2.3.10)</h2>
     </div>
   </div>
   <div class="container">
