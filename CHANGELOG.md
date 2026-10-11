@@ -122,3 +122,35 @@ Documentation (after v2.3.11, not a new version)
   FPGA.md (register map checked against the RTL), Remote.md (HTTP remote control with control_finn.py, HF notes),
   Devel.md (build, tests, installation). doc/README.md is now the index of doc/. README updated (screenshot in
   .README/, documentation table, installation, build)
+
+v2.3.12
+- Port of the minor fixes of lock_in+pid_harmonic v2.3.18 (no FPGA change: the image is the one of v2.3.11, only
+  comments of lock.v changed; the "v2.3.18" in the comments of the sources is that of lock_in+pid_harmonic)
+- FIXED lock trigger registers written from Python (py/lock_from_registers.py --time/--level/--sw, control_finn.py):
+  lock_trig_val / lock_trig_time / lock_trig_sw follow the rule of lock_control: the C writes each one only when its
+  parameter changes and copies a value written from outside to the parameter (the page shows it and keeps it; before,
+  it was not shown and the page value was written back at the next change of any lock parameter)
+- FIXED Config -> load sent read-only parameters of the server (meas_*, lock_X/Y/F1..F3, lock_lock_status,
+  lock_lock_control, trig_delay, ...): skipped (server_ro_keys)
+- FIXED Single mode made no request at all after its acquisition (a bazaar?stop or another client was not noticed,
+  the lock label was not refreshed): 1 s polling in Single; an AGAIN answer starts the fast polling only while a
+  Single click waits for its acquisition
+- FIXED console "Capture Lock: ended by , scope settings restored" (the reason is given); mouse wheel on Ramp period /
+  limits, PID, modulation and lock trigger fields updates the text below them (tau/f...); X+ of the plot range up to
+  68.72 s (it stopped at 10 s)
+- FIXED py/lock_from_registers.py: --time clamped to 0..2^32-1 ticks with a message (40s gave OverflowError), ns/us
+  accepted, --sw 0..15, docstring (--sw is "Signal for trigger", options 6-8 are 0)
+- FIXED example_usage.py: the Lock cell restores the lock-in and PID A of lock_in+pid_harmonic_hf__lock_mode.json
+  (gen_mod_hp 20, 49.6 kHz; RESTORE_LOCK_MODE = False prints a warning instead), and "save data" ends with
+  rp.scope_auto() (the script left the scope of the page in Single)
+- FIXED upload_app.sh: rw script of the OS as the Makefile (/opt/redpitaya/sbin/rw or /boot/sbin/rw), -w removed
+  {index.html,js.css} (js,css), fpga.sh exec bit
+- CHANGED c/streaming.c closes the file descriptors inherited from the nginx worker; its "Finishing streaming"
+  message no longer ends with ": Success" (perror with errno 0); c/stream_tcp_osc_cmd runs with nice -10 and
+  locked memory (fewer lost samples at decimation 128 with activity on the board; STREAM_NICE=<n> changes it)
+- CHANGED AUTO: minimum window 1 us (was 100 ns: with noise only it gave 0...139 ns)
+- CHANGED texts: "Signal for trigger" 6-8 "0 (sqXo)"..; ctrl_B = pidB_out + ramp_B (lock.v, fpga_lock.h, main.c,
+  config_tool.py); 20-bit decimation in src/fpga.h and fpga/README.md; resources/README.md (read with name= or name);
+  doc/lock_control.md and doc/Remote.md (trigger registers written from outside)
+- Tests: test/minor_ui_sim.js (new), lock_capture_ui_sim.js part 7 (Single polling), config_load_window_sim.js
+  (no read-only key sent), auto_set_c_sim parts 4 and 5

@@ -16,13 +16,14 @@ loop, controlled from a web page or remotely over HTTP.
 
 ## Version 2.3.x (Ecosystem 2.0)
 
-Current version: **2.3.11** (branch `devel2.0`).
+Current version: **2.3.12** (branch `devel2.0`).
 
 This version is **based on the 0.3.x series (v0.3.9), with the FPGA design built in Vivado 2020.1**,
 using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/RedPitaya-FPGA)
 (project `v0.94`, model `Z10`), the same port done in
 [rp_lock-in_pid_h](https://github.com/marceluda/rp_lock-in_pid_h) v2.3.x: v2.3.11 has all the changes of its
-v2.3.10 to v2.3.17 (lock sequence in the FPGA, Capture Lock, HTTP remote control on Ecosystem 2.0...). It is
+v2.3.10 to v2.3.17 (lock sequence in the FPGA, Capture Lock, HTTP remote control on Ecosystem 2.0...), and
+v2.3.12 the minor fixes of its v2.3.18 (same FPGA). It is
 intended for the Red Pitaya **Ecosystem 2.0** (e.g. `RedPitaya_OS_2.04`; tested on 2.04-35).
 The 0.3.x series (branch `master`, FPGA with Vivado 2015.2) is the version for the 0.9x / 1.0 ecosystems.
 
