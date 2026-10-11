@@ -114,3 +114,11 @@ v2.3.11
 - Tests (lock_in+pid_harmonic_hf/test/): xsim lock_ctrl_sim.sh and lock_bus_read_sim.sh; node lock_ctrl_ui_sim.js,
   lock_capture_ui_sim.js, trig_input_units_sim.js, config_load_window_sim.js, trig_from_graph_sim.js;
   auto_set_c_sim/run.sh (controller C on the PC)
+
+Documentation (after v2.3.11, not a new version)
+- ADDED doc/: App.md (instruments, technical data with the HF modulation of 120 points, differences with
+  lock_in+pid_harmonic, lock results at 49.6 kHz and 104.2 kHz), Usage.md (web interface, procedures, lock at
+  104 kHz, HF notes, screenshots in doc/.Usage/), Structure.md (layers and FPGA block diagrams in Mermaid),
+  FPGA.md (register map checked against the RTL), Remote.md (HTTP remote control with control_finn.py, HF notes),
+  Devel.md (build, tests, installation). doc/README.md is now the index of doc/. README updated (screenshot in
+  .README/, documentation table, installation, build)
