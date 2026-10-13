@@ -11,7 +11,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 //(* keep_hierarchy = "yes" *)
-module gen_mod_h
+module gen_mod_h_comb
 (
     input clk,rst,
     input           [12-1:0] phase,    // Phase control
@@ -297,3 +297,62 @@ endmodule
 
 
 */
+
+
+// v2.3.19 (timing, port of lock_in+pid_harmonic): wrapper with the outputs registered. The generator
+// (gen_mod_h_comb, unchanged) comes 1 clock (8 ns) later, all its outputs by the same clock (same waveforms
+// and phases between them); the reads of the ROM tables plus the sign change did not leave time for the
+// paths that start here. See doc/lock_latency.md.
+module gen_mod_h (
+    input  clk,
+    input  rst,
+    input [12-1:0] phase,
+    input [32-1:0] phase_sq,
+    input [14-1:0] hp,
+    output reg signed   [14-1:0] sin_ref,
+    output reg signed   [14-1:0] cos_ref,
+    output reg signed   [14-1:0] cos_1f,
+    output reg signed   [14-1:0] cos_2f,
+    output reg signed   [14-1:0] cos_3f,
+    output [12-1:0] cntu_w,
+    output reg  harmonic_trig
+);
+    wire signed   [14-1:0] sin_ref_w;
+    wire signed   [14-1:0] cos_ref_w;
+    wire signed   [14-1:0] cos_1f_w;
+    wire signed   [14-1:0] cos_2f_w;
+    wire signed   [14-1:0] cos_3f_w;
+    wire [12-1:0] cntu_w_w;
+    wire  harmonic_trig_w;
+    gen_mod_h_comb i_comb (
+        .clk(clk),
+        .rst(rst),
+        .phase(phase),
+        .phase_sq(phase_sq),
+        .hp(hp),
+        .sin_ref(sin_ref_w),
+        .cos_ref(cos_ref_w),
+        .cos_1f(cos_1f_w),
+        .cos_2f(cos_2f_w),
+        .cos_3f(cos_3f_w),
+        .cntu_w(cntu_w_w),
+        .harmonic_trig(harmonic_trig_w)
+    );
+    assign cntu_w = cntu_w_w;
+    initial begin
+        sin_ref = 0;
+        cos_ref = 0;
+        cos_1f = 0;
+        cos_2f = 0;
+        cos_3f = 0;
+        harmonic_trig = 0;
+    end
+    always @(posedge clk) begin   // no reset (data path)
+        sin_ref <= sin_ref_w;
+        cos_ref <= cos_ref_w;
+        cos_1f <= cos_1f_w;
+        cos_2f <= cos_2f_w;
+        cos_3f <= cos_3f_w;
+        harmonic_trig <= harmonic_trig_w;
+    end
+endmodule
