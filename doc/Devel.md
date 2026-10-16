@@ -62,7 +62,6 @@ rp_lock-in_pid_h_hf/
     │   ├── prj/v0.94/rtl/   # red_pitaya_top.sv, red_pitaya_ps.sv, lock.v, lock/*.v, lock/data_*.dat (HF tables)
     │   ├── prj/v0.94/{ip,sdc}, prj/barebones/ip, sdc/, brd/
     │   └── prj/v0.94/out/   # build products (not versioned)
-    ├── fpga_old_2015.2/     # previous Vivado 2015.2 design (not versioned; in git history at v0.3.9 / master)
     ├── doc/                 # design notes: lock_control.md, lock_capture.md (+ Doxygen setup)
     ├── test/                # simulations (xsim, node, native C)
     ├── upload_app.sh        # upload a package to a board through SSH

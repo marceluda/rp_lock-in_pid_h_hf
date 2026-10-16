@@ -3,7 +3,7 @@
 # ADC clock asynchronous) with test/lock_bus_read_tb.sv in Vivado 2020.1 xsim (v2.3.10 of
 # lock_in+pid_harmonic_hf = bus fix of lock_in+pid_harmonic v2.3.17).
 # Usage: test/lock_bus_read_sim.sh [work_dir [lock.v]]   (default: a temporary directory, removed at the
-#        end; the lock.v of the repo). Passing another lock.v (e.g. fpga_old_2015.2/rtl/lock.v of v0.3.9) shows the bug.
+#        end; the lock.v of the repo). Passing another lock.v (e.g. the one of v0.3.9: `git show v0.3.9:lock_in+pid_harmonic_hf/fpga/rtl/lock.v`) shows the bug.
 # mult_dsp_14.v instantiates DSP48E1: elaborated with the unisims_ver library and glbl.
 # Exit status 0 if the testbench prints "TB RESULT: PASS".
 set -e
