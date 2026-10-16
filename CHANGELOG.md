@@ -169,3 +169,35 @@ v2.3.13
   integrator with the ISR shift in parallel, sum_div of the second LPF stage in a register
 - CHANGED page title (h2.page-title) and <title> get the version of info/info.json at build time (Makefile)
 - ADDED test/lock_latency_sim.sh + test/lock_latency_tb.sv (xsim, 406 checks against v2.3.12)
+
+v2.3.14
+- Port of lock_in+pid_harmonic v2.3.21 (Reset zoom), v2.3.22 (mouse wheel) and v2.3.23 (slow scans, FPGA lock_ctrl.v);
+  see its CHANGELOG for the details and the board tests. New FPGA image. "v2.3.2x" in the comments are those of
+  lock_in+pid_harmonic.
+- ADDED Reset zoom: X from t = 0 to one period of the ramp (Ext Trig = Scan floor / Scan ceil: sawtooth
+  (high-low+1)*(step+1), triangle 2*(high-low)*(step+1) ticks), one period of the HF modulation (harmonic mod.:
+  120*(hp+1) ticks, PERIOD_LEN) or one whole memory at the current Dec (other Ext Trig); periods >= 1.5 s: 0.98 x the
+  period (at least 50 ms before the next trigger). Y to -1..1 V (raw mode -8192..8192). During a lock capture it first
+  ends it (as AUTO); the Raw Mode button rescales Y
+- CHANGED the "Square mod." Ext Trig is no longer in the trigger menu (not implemented in this App: always 0 in the
+  FPGA); also removed from resources/config_tool.py, labelled "0 (Square mod.)" in control_finn.py
+- ADDED mouse wheel on the scope: no key zooms both axes, SHIFT only time (cursor ew-resize), ALT only the Y axes
+  (cursor ns-resize, no POST); X window 20 ns .. 68.7 s; local zoom during a lock capture; xmin/xmax sent without
+  rounding to 2 decimals (a fast zoom from s to ms sent 0/0)
+- FIXED slow scans (windows >= 1.5 s): new long-acquisition reader in src/worker.c (rp_osc_long_rd_*: never a sample
+  of an older lap of the scope memory or from before the history, adc_we_cnt register 0x2C, OK only when complete,
+  ends at the window of the user); Capture Lock holds the lock request until the scope has enabled its trigger
+  (lock_request_* in src/lock.c, the POST answers at once); read-only params scope_gen, scope_acq_state,
+  scope_acq_gen, sig_gen (PARAMS_NUM 208 -> 212); page: capture recognised by sig_gen, partial traces drawn,
+  banners, real "LOCKED but not captured"; Reset zoom clears stale traces
+- FIXED (FPGA, lock_ctrl.v): the time trigger counter is valid (cnt_ok) only from a floor of a ramp that has been
+  running since then (new input ramp_run = ramp_enable & ~ramp_reset) and it saturates instead of wrapping every
+  34.4 s: a time (or level+time) request armed after a stop fires at the next floor + time, never mid-scan. Adapted
+  to the registered trigger inputs of this App (v2.3.11): cnt_ok is set with ramp_trigger_r and delayed once for
+  level+time; with the ramp running the lock fires in the same clock as before. time_eq is built from lock_trig_time-1
+  and two flags in registers (the saturation inside cnt_next would lengthen the comparison path, -0.26 ns in
+  lock_in+pid 2.2.9); same value every clock (lock_ctrl_tb.v checks it against cnt_next == lock_trig_time)
+- example_usage.py: note about time / timeout for slow ramps
+- Tests: new test/reset_zoom_sim.js (30, 120-point period), test/plot_wheel_sim.js (59), test/ramp_mod_period_sim.sh
+  (ramps and 120*(hp+1), 11); lock_capture_ui_sim.js section 8 (79), auto_set_c_sim sections 6-9 (44),
+  lock_ctrl_tb.v cases 16-19 and the time_eq monitor (46)

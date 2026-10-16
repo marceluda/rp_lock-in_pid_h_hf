@@ -16,7 +16,7 @@ loop, controlled from a web page or remotely over HTTP.
 
 ## Version 2.3.x (Ecosystem 2.0)
 
-Current version: **2.3.13** (branch `devel2.0`).
+Current version: **2.3.14** (branch `master`).
 
 This version is **based on the 0.3.x series (v0.3.9), with the FPGA design built in Vivado 2020.1**,
 using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/RedPitaya-FPGA)
@@ -44,6 +44,15 @@ The 0.3.x series (branch `master`, FPGA with Vivado 2015.2) is the version for t
 - Tested on the board with a real lock at **49.6 kHz and 104.2 kHz** against a simulated peak; a lock at
   1.04 MHz has not been tested yet.
 - Only the App itself is packaged (the `_DEBUG` and `_RELOAD` flavours were removed).
+- v2.3.13: pipeline registers in the FPGA to close timing (WNS −9.3 → −0.9 ns), references delayed 1 clock to keep
+  the measured phase.
+- v2.3.14 (from lock_in+pid_harmonic 2.3.21–2.3.23): **Reset zoom** sets the scope to one period of the ramp (Ext Trig
+  = Scan floor / Scan ceil), one period of the HF modulation (harmonic mod., 120·(hp+1) ticks) or one whole memory at
+  the current Dec, and Y to −1 … 1 V (raw mode −8192 … 8192); it ends a lock capture first, and Raw Mode rescales Y.
+  "Square mod." (not implemented) is no longer in the trigger menu. **Mouse wheel on the scope**: no key zooms both
+  axes, **SHIFT** only time (cursor ↔), **ALT** only the Y axes (cursor ↕). **Slow scans** (windows ≥ 1.5 s, e.g. a
+  30 s ramp): no samples of an older lap of the scope memory, Capture Lock with long histories, Reset zoom at
+  0.98 × the period; (FPGA) a time trigger armed after the ramp was stopped waits for the next scan floor.
 - See the [CHANGELOG](CHANGELOG.md).
 
 
