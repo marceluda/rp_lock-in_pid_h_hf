@@ -25,7 +25,8 @@ using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/Red
 v2.3.10 to v2.3.17 (lock sequence in the FPGA, Capture Lock, HTTP remote control on Ecosystem 2.0...), and
 v2.3.12 the minor fixes of its v2.3.18 (same FPGA). It is
 intended for the Red Pitaya **Ecosystem 2.0** (e.g. `RedPitaya_OS_2.04`; tested on 2.04-35).
-The 0.3.x series (branch `master`, FPGA with Vivado 2015.2) is the version for the 0.9x / 1.0 ecosystems.
+Since 2026-10-15 the branch `master` holds the 2.x series; the 0.3.x series (FPGA with Vivado 2015.2), for the
+0.9x / 1.0 ecosystems, stays in the tags `v0.3` .. `v0.3.9`.
 
 - HF: the harmonic modulation has a period of 120 table points (lock_in+pid_harmonic: 2520), so its
   frequency is 125 MHz / (120 * (`gen_mod_hp` + 1)) = 1.04 MHz .. 63.6 Hz, and `gen_mod_phase` is 0..119
@@ -148,7 +149,7 @@ To build or modify the App you need a linux development environment with:
   - Vivado 2020.1 (FPGA and `bootgen`; `lock_in+pid_harmonic_hf/fpga/Makefile` loads
     `/tools/Xilinx/Vivado/2020.1/settings64.sh` by itself, override with `VIVADO_SETTINGS=...`)
   - gcc-linaro-4.9-2015.02-3-x86_64_arm-linux-gnueabihf (installed on `/opt/linaro/gcc-linaro-4.9-2015.02-3-x86_64_arm-linux-gnueabihf/`)
-  - (the 0.3.x series, branch `master`, used Vivado 2015.2; `settings.sh` still loads it if present)
+  - (the 0.3.x series, tags `v0.3` .. `v0.3.9`, used Vivado 2015.2; `settings.sh` still loads it if present)
 
 The App was based on code from project:
 https://github.com/RedPitaya/RedPitaya/tree/release-v0.95/apps-free/scope

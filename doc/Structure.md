@@ -1,6 +1,6 @@
 # Internal structure
 
-How `lock_in+pid_harmonic_hf` v2.3.11 is built (the same structure as `lock_in+pid_harmonic` 2.3.17; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
+How `lock_in+pid_harmonic_hf` v2.3.15 is built (the same structure as `lock_in+pid_harmonic` 2.3.24; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
 how the instruments are connected inside the FPGA. Registers: [FPGA.md](FPGA.md). Specifications:
 [App.md](App.md). Source tree and build: [Devel.md](Devel.md).
 
@@ -96,21 +96,27 @@ flowchart TB
   W -->|traces| GP
 ```
 
-- **Parameter table**: `src/main.c` `rp_main_params[]` (208 parameters, indices in `src/main.h`): the scope
-  (0-41), the AWG and PID of the original scope App (42-80, unused by this FPGA), and the lock module (81-207).
+- **Parameter table**: `src/main.c` `rp_main_params[]` (212 parameters, `PARAMS_NUM`, indices in `src/main.h`): the scope
+  (0-41), the AWG and PID of the original scope App (42-80, unused by this FPGA), the lock module (81-207) and,
+  since v2.3.14, four read-only scope state parameters (208-211: `scope_gen`, `scope_acq_state`, `scope_acq_gen`,
+  `sig_gen`; `src/main.h` l. 278-281) that tell the page which acquisition a trace comes from.
   Most `lock_*` parameters map one to one to a register; some are fields of a register
   (`lock_lpf_F0_tau`/`_order` → `lpf_F0`; `lock_ctrl_aux_*` → `lock_control`; `lock_osc1/2_filt_off` →
   `osc_ctrl`; `lock_pidA_irst/freeze/ifreeze` → `pidA_ctrl`; `lock_rl_*` → `rl_config`; `lock_sf_*` → `sf_config`).
-- **`lock_update()`** (`src/lock.c` l. 110) writes the lock registers from the parameters; `lock_control`
+- **`lock_update()`** (`src/lock.c` l. 221) writes the lock registers from the parameters; `lock_control`
   only when the value composed from `lock_ctrl_aux_*` changes (v2.3.11; `lock_in+pid_harmonic` v2.3.13).
-- **`lock_update_main()` / `lock_update_status()`** (l. 271, 417) read the registers back (read-only values,
+- **`lock_update_main()` / `lock_update_status()`** (l. 391, 538) read the registers back (read-only values,
   `lock_status`, and changes made from outside, e.g. Python) into the parameters, on every request.
 - **Scope worker** (`src/worker.c`): a thread that arms the scope, waits for the trigger (on 2.0, it unlocks
   the trigger at 0x94 before each acquisition and detects the end with `conf` bit 4), reads both buffers and
   decimates them to 1024 points; it also runs the auto-set (AUTO) and the measurements. Since v2.3.11 a POST
-  without scope changes does not reset it, and a lock request that arms a Single waits until the scope is
-  armed (`rp_osc_worker_wait_armed()`), which makes *Capture Lock* deterministic
-  ([`lock_capture.md`](../lock_in+pid_harmonic_hf/doc/lock_capture.md) §3.2).
+  without scope changes does not reset it. Since v2.3.14 (port of `lock_in+pid_harmonic` v2.3.23) every point is
+  a sample counted from the trigger and is read only if it was written in the current acquisition (windows ≥ 1.5 s
+  are read while being written, and partial traces are served); and a lock request that arms a Single no longer
+  waits in the POST: the request bits are held out of `lock_control` (the `lock_ctrl_hold*` state, `src/lock.c`
+  l. 75-80) until the worker has enabled the trigger of that acquisition, which keeps *Capture Lock* deterministic
+  also with slow scans ([`lock_capture.md`](../lock_in+pid_harmonic_hf/doc/lock_capture.md), section "v2.3.14
+  (lock_in+pid_harmonic v2.3.23): slow scans").
 - **`trig_mode` = 2 (Single)** puts the worker in its idle state: it resets and configures the scope once and
   then does not arm it (`src/main.c` `rp_set_params()`, `src/worker.c`). After `bazaar?start` the worker runs in
   Auto even with no page open; `control_finn.py` sets Single through `POST /data` before acquiring through
@@ -205,21 +211,21 @@ Main points (with the lines of `lock.v`):
   (`data_sin1.dat`/`data_cos1.dat` 30 points, `data_cos2.dat` 15, `data_cos3.dat` 10) forwards, backwards and
   with the sign changed. `gen_mod_phase` (0..119) offsets the address of `cos_1f..3f`. `harmonic_trig` marks the
   start of each period (Ext Trig "harmonic mod."). f = 125 MHz / (120 · (`gen_mod_hp` + 1)) = 1.04 MHz .. 63.6 Hz.
-- **Lock-in** (l. 709-904): `signal_i` is multiplied by the five references (DSP multipliers), filtered by two
+- **Lock-in** (l. 727-909): `signal_i` is multiplied by the five references (DSP multipliers), filtered by two
   cascaded first-order low-pass filters per line (A and B, `LP_filter3`), scaled by 2^`sg_amp` and saturated
   to 14 bits. X and Y use `cos_ref` and `sin_ref` with 38-bit paths (10 more bits of resolution) and share
   `lpf_F0`/`sg_amp0`; F1, F2 and F3 use `cos_1f`, `cos_2f`, `cos_3f` and have their own filter and gain.
-- **Error** (l. 540-565): one of 0, Xo, Yo, F1o, F2o, F3o, in1, in1−in2, minus `error_offset`; its mean and
+- **Error** (l. 557-582): one of 0, Xo, Yo, F1o, F2o, F3o, in1, in1−in2, minus `error_offset`; its mean and
   square are accumulated over 2²⁷ ticks for the Monitor.
-- **PIDs** (l. 909-999): each PID takes a signal (`pidX_sw`), computes P, I, D (`lock_pid_block.v`) and its
+- **PIDs** (l. 914-1010): each PID takes a signal (`pidX_sw`), computes P, I, D (`lock_pid_block.v`) and its
   output is forced to 0 (and the integrator reset) when the lock control disables it.
-- **Control signals** (l. 277-284): `ctrl_A = pidA_out + ramp_A + jumpA`, `ctrl_B = pidB_out + ramp_B + jumpB`,
+- **Control signals** (l. 281-288): `ctrl_A = pidA_out + ramp_A + jumpA`, `ctrl_B = pidB_out + ramp_B + jumpB`,
   saturated.
-- **Outputs** (l. 375-433): any of 16 signals, plus the modulation (`mod_out1·cos_ref`, `mod_out2·sin_ref`)
+- **Outputs** (l. 379-450): any of 16 signals, plus the modulation (`mod_out1·cos_ref`, `mod_out2·sin_ref`)
   when `mod_outX ≥ 0`, saturated.
-- **Scope** (l. 289-347): two 25-input selectors; external trigger from `trig_sw` (l. 350-370).
-- **Bus interface** (`[FPGA MEMORY DOCK]`, l. 1006-1308): registers written by the PS and the read
-  multiplexer. Since v2.3.10 (the bus fix of `lock_in+pid_harmonic` v2.3.17) the read-only signals are read from registered copies (`*_rd`, l. 852-883) and
+- **Scope** (l. 293-351): two 25-input selectors; external trigger from `trig_sw` (l. 354-374).
+- **Bus interface** (`[FPGA MEMORY DOCK]`, l. 1015-1317): registers written by the PS and the read
+  multiplexer. Since v2.3.10 (the bus fix of `lock_in+pid_harmonic` v2.3.17) the read-only signals are read from registered copies (`*_rd`, l. 874-905) and
   `sys_rdata` is loaded only during a read and then held, because the PS side of the bus (`sys_bus_cdc`) takes it
   asynchronously some cycles later; the copies are not used by the real-time loop
   ([FPGA.md](FPGA.md#lock-module-0x40600000)).
@@ -250,7 +256,7 @@ stateDiagram-v2
 In this App the inputs of the trigger logic are registered (as in `lock_in+pid` 2.2.6, for timing):
 `ramp_trigger_r` restarts the counter loaded with 1 one clock later (so the Time trigger fires in the same clock as
 before), and the level comparisons `ge_now`/`ge_last` and the time comparisons `time_eq`/`time_ge` are registers;
-the Level trigger acts one clock (8 ns) later (`lock_ctrl.v` l. 96-175).
+the Level trigger acts one clock (8 ns) later (`lock_ctrl.v` l. 97-218).
 
 The time trigger counts ticks from the last scan floor of the ramp (`ramp_floor_trig`); the level trigger
 watches the signal selected by `lock_trig_sw`. On entering LOCKED the FPGA emits `lock_ctrl_trig`, which is

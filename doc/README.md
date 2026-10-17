@@ -1,7 +1,7 @@
 # RP Lock-in+PID Harmonic HF — documentation
 
-Documentation of `lock_in+pid_harmonic_hf` **v2.3.11** (branch `devel2.0`, Ecosystem 2.0, FPGA built with
-Vivado 2020.1): the App `lock_in+pid_harmonic` 2.3.17 with a harmonic modulation of 63.6 Hz to 1.04 MHz.
+Documentation of `lock_in+pid_harmonic_hf` **v2.3.15** (branch `master`, Ecosystem 2.0, FPGA built with
+Vivado 2020.1): the App `lock_in+pid_harmonic` 2.3.24 with a harmonic modulation of 63.6 Hz to 1.04 MHz.
 Back to the [project README](../README.md) · [CHANGELOG](../CHANGELOG.md).
 
 | Document | Contents |

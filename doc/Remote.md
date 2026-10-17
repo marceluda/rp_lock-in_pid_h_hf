@@ -1,9 +1,9 @@
 # Remote control
 
-How to control `lock_in+pid_harmonic_hf` **v2.3.11** from a program, without the web page. The registers are
+How to control `lock_in+pid_harmonic_hf` **v2.3.15** from a program, without the web page. The registers are
 described in [FPGA.md](FPGA.md); the meaning of each instrument in [App.md](App.md).
 
-The remote control is the one of `lock_in+pid_harmonic` 2.3.17 (same endpoints, `c/` tools, `py/` scripts and
+The remote control is the one of `lock_in+pid_harmonic` 2.3.17 (later versions of `_h`, up to 2.3.24, did not change it; same endpoints, `c/` tools, `py/` scripts and
 `control_finn.py`), with the HF period of the modulation: **f = 125 MHz / (120 · (`gen_mod_hp` + 1))** and
 **`gen_mod_phase` 0..119** (`PERIOD_LEN = 120` in `control_finn.py`). **Version numbers v2.3.12 to v2.3.17 in
 this page are versions of `lock_in+pid_harmonic`**, where each feature was introduced and tested; this App
@@ -400,7 +400,7 @@ X, Y = r['X_28'] / 2**11 / 8192, r['Y_28'] / 2**11 / 8192    # volts, amplitude 
 ### Configure a PID and the ramp
 
 ```python
-rp.set_pid('A', sw='error', sp=0, kp=-500, PSR='/1024',   # kp = -0.488
+rp.set_pid('A', sw='error', sp=0, kp=-250, PSR='/1024',   # kp = -0.244 (lock_mode config since 2026-10-12)
            ki=-20, ISR='537 ms',                          # tau_i = 537 ms / 20 = 26.8 ms
            kd=0, SAT=13, ctrl=0)                          # integral term limited to +-1 V
 rp.lock.out1_sw = 'ctrl_A'                                # OUT1 = PID A + ramp A (out1_sw = 12)
@@ -470,11 +470,15 @@ Notes:
 - `lock_trig_time` is 32 bits unsigned (up to 34.36 s; up to v2.3.10 values ≥ 2³¹ aliased). Written
   through `/lock` the value is exact; written from the web page it is rounded to float32 above 2²⁴ ticks
   ([FPGA.md](FPGA.md#lock-control-auto-lock), note on `lock_trig_time`).
+- Since v2.3.14 (FPGA) the time trigger only counts from a scan floor of a ramp that kept running: a Trigger Lock
+  armed right after a release or with the ramp stopped waits for the next floor and fires at floor + time (before,
+  it could fire in the middle of the scan). The `time=16.58e-3` / `timeout=10` of the examples are for the 64 ms
+  scan of the test configuration; with slow ramps use a timeout longer than the period.
 - On the board, `python3 py/lock_from_registers.py --trig time --time 16.58ms --set pidA` does the same
   (with `--status`, `--release`, `--now`, `--force`); tested on the board with this App (v2.3.11): `--trig time --time
   16.58ms --set pidA` and `--trig level --level 5085` LOCKED in 0.011 s, the page followed the state, the Time
-  field and the trigger type with 0 POST. `--time 40s` fails with `OverflowError` (`parse_time()` does not clamp to
-  2³²−1, unlike the page; `--time 20s` works): use at most `34.36s` (reported to devAgent).
+  field and the trigger type with 0 POST. Up to v2.3.11 `--time 40s` failed with `OverflowError`; since v2.3.12 the
+  time is clamped to 0..2³²−1 ticks with a message.
 
 ### Read an oscilloscope acquisition
 
