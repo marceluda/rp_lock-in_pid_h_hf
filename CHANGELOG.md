@@ -217,3 +217,23 @@ v2.3.15
   of a Capture Lock, Reset zoom and AUTO do not apply it; during a Capture Lock it ends it, then one POST
 - Tests: new test/osc_presets_sim.js (37; the page of 2.3.14 fails 32); config_load_window_sim.js: stub of
   oscUsrConfigLoad()
+
+v2.3.16
+- Port of lock_in+pid_harmonic v2.3.26 (no FPGA change)
+- CHANGED (controller, src/worker.c) Auto waits for the trigger like Normal (Ext Trig with Source External, or the level
+  of a channel) and forces the acquisition only if no trigger came within max(0.25 s, 1.1 x window + 50 ms, 1.1 x period
+  of the Ext Trig + 50 ms), at most 80 s; the period is known for Scan floor / ceil with the scan running (Scan enable,
+  no reset, lock_status bit 4) and for harmonic mod. (120 x (hp+1) cycles). Up to 2.3.15 Auto triggered at once (trig_imm): t = 0 at any phase of
+  the scan even with Ext Trig = Scan floor (testAgent 2026-10-19, sq). Normal, Single, Capture Lock, AUTO, the Auto
+  window (from the trigger) and the long acquisitions unchanged; a 30 s scan in Auto acquires every scan from its floor
+- CHANGED the trigger Level field / line / slider are enabled in Auto too; the "Choose from graph" warning accepts Auto
+- CHANGED "Don't turn on PIDs and Ramp on config loading" (#load_config_block_start) is unchecked by default (it was
+  checked): Config load / Load file and the restore after a start / Restart set the ramp enable, Scan enable
+  (lock_ramp_enable) and the PID A/B enables as saved; checked, they are set to 0 as before. Lock requests (lock_now,
+  launch_lock_trig) and stream_cmd are never loaded (state_transient_zero)
+- CHANGED the option is not saved anywhere: every page load starts unchecked (autocomplete="off", variable synced
+  from the checkbox)
+- CHANGED <title> / page title of the source index.html (said v2.3.14)
+- Tests: new test/config_load_block_sim.js (10; the page of 2.3.15 fails 6); test/auto_set_c_sim/harness.c section 10
+  (SIM_AUTO=1): Auto + Scan floor only floors, scan stopped forced every ~0.40 s, 3 s scan in 0..0.1 s only floors, Normal
+  without trigger nothing (the src of 2.3.15 fails 10.1-10.3); 6.1 runs 9 s, section 8 waits 0.6 s
