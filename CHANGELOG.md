@@ -237,3 +237,23 @@ v2.3.16
 - Tests: new test/config_load_block_sim.js (10; the page of 2.3.15 fails 6); test/auto_set_c_sim/harness.c section 10
   (SIM_AUTO=1): Auto + Scan floor only floors, scan stopped forced every ~0.40 s, 3 s scan in 0..0.1 s only floors, Normal
   without trigger nothing (the src of 2.3.15 fails 10.1-10.3); 6.1 runs 9 s, section 8 waits 0.6 s
+
+v2.3.17
+- Port of lock_in+pid_harmonic 2.3.27 (web page only, no FPGA / C change). Requested by the user (2026-10-20): the App
+opened with the parameters of a previous session; the user wants to choose.
+- CHANGED: **Lock Control** panel moved right below **Outputs** in the left column (Oscilloscope, Outputs, Lock Control, Lock-in modules, Ramp Controller, PIDs modules, Streaming).
+- CHANGED: the state that the page saves automatically (`saveState()`, every ~2 s and after each POST) is now also kept in
+  **localStorage** (`lockin_last_state_lock_in+pid_harmonic_hf`, shared by the tabs, survives closing the browser): the **last config**.
+  The tab state (`sessionStorage`, used by *Restart*) is kept as before.
+- ADDED (Config dialog) checkbox **Load last config on init** (`#load_last_on_init`), **checked by default**, saved in
+  localStorage (`lockin_load_last_on_init_lock_in+pid_harmonic_hf`). When the page starts the App (main menu, new tab, F5): checked, the
+  last config is restored; unchecked, only `def_params` are sent (defaults of `src/main.c`). Ramp / PIDs of a restored
+  config follow *Don't turn on PIDs and Ramp on config loading*; lock requests are never restored.
+- ADDED (Config dialog) buttons **Load last config** and **Reset to defaults**: they close the dialog and restart the App
+  (reload; stopped and started as when it is opened, FPGA reloaded) with the last config / with the defaults, whatever
+  the checkbox says. Reset to defaults = a fresh App (no table of defaults in the page), lock open, no lock request.
+- ADDED hold (`lockin_last_hold_lock_in+pid_harmonic_hf`): opened with the defaults, the last config is kept until the user changes a
+  parameter (time window / Y axis alone do not count), so *Load last config* brings it back.
+- *Restart* (took control, error dialogs) and the automatic restarts still restore the tab state; an App already running
+  when the page opens keeps its state (stopped and started for Load last config / Reset to defaults).
+- Tests: new `test/last_config_sim.js` (35 checks; the page of 2.3.16 fails). The other node tests unchanged and passing.

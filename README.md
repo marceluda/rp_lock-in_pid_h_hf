@@ -16,7 +16,7 @@ loop, controlled from a web page or remotely over HTTP.
 
 ## Version 2.3.x (Ecosystem 2.0)
 
-Current version: **2.3.16** (branch `master`).
+Current version: **2.3.17** (branch `master`).
 
 This version is **based on the 0.3.x series (v0.3.9), with the FPGA design built in Vivado 2020.1**,
 using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/RedPitaya-FPGA)
@@ -63,6 +63,10 @@ Since 2026-10-15 the branch `master` holds the 2.x series; the 0.3.x series (FPG
   t = 0 is the scan floor in Auto too (before, Auto triggered at once, at any phase of the scan). Also: the option **Don't turn on PIDs and Ramp on config loading** (Config dialog) is now unchecked by
   default: *Config → load* / *Load file* (and the restore after a Restart) bring back the ramp (Scan enable) and the
   PIDs as saved, so a config saved while scanning loads scanning. Checking it keeps the previous protection.
+- v2.3.17 (from lock_in+pid_harmonic 2.3.27): Config dialog: **Load last config on init** (checked by default, saved in the
+  browser): the App opens with the last settings used in this browser (also in a new tab); unchecked, it opens with its
+  defaults. Buttons **Load last config** and **Reset to defaults** restart the App with them. The **Lock Control**
+  panel is now right below Outputs.
 - See the [CHANGELOG](CHANGELOG.md).
 
 
