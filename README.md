@@ -16,7 +16,7 @@ loop, controlled from a web page or remotely over HTTP.
 
 ## Version 2.3.x (Ecosystem 2.0)
 
-Current version: **2.3.20** (branch `master`).
+Current version: **2.3.21** (branch `master`).
 
 This version is **based on the 0.3.x series (v0.3.9), with the FPGA design built in Vivado 2020.1**,
 using the project structure of [RedPitaya-FPGA](https://github.com/RedPitaya/RedPitaya-FPGA)
@@ -78,6 +78,10 @@ Since 2026-10-15 the branch `master` holds the 2.x series; the 0.3.x series (FPG
   calibration offset of the input (in volts it was one offset off: above in its search, below in the level it left) or
   a calibrated full scale other than 1 V (level and Y range were scaled by 1 / full scale); in Raw Mode it gives a
   whole count and half counts are rounded as the page shows them (−2.5 was shown as −2 and written as −3).
+- v2.3.21 (from lock_in+pid_harmonic 2.3.31): **Ramp Controller** of lock_in+pid_plus 2.2.0 (web page only): tabs
+  *period* / *freq* (Frequency in Hz with the nearest reachable value, Amp. p-p / Offset), *Ramp period* in s / ms
+  (whole period), *Lock osc. screen* (scope locked on the ramp: rising half of a triangle, the time zoom sets the ramp
+  limits), *Reset zoom* alternating whole period / rising half (Scan floor, triangle), no stale *Force X* of `GET /data`.
 - See the [CHANGELOG](CHANGELOG.md).
 
 
