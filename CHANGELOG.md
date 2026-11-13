@@ -381,4 +381,15 @@ after the scan floor. Checked again on the RTL by `test/ramp_mod_period_sim.sh` 
   `config_load_window_sim`, `lock_capture_ui_sim`, `lock_ctrl_ui_sim`, `osc_presets_sim` take the `[FORCEX]` block.
   All 15 node sims pass; `ramp_mod_period_sim.sh` PASS.
 - Pending (as in pid_plus 2.2.0): *Ramp hig / low lim* do not take mV / V; the wheel over *Ramp period* does not move
-  the step above $2^{24}$ (float32). Board test (testAgent) pending.
+  the step above $2^{24}$ (float32).
+- Board test (testAgent, RP2, package 2.3.21-26, 2026-11-13; `reportes/lock-in_pid_h_hf/2026-11-13_1520_v2321.md` in
+  the Apps folder): **PASS**. Tabs, *freq* tab (100 Hz → step 77, 100.1603 Hz; wheel 1/10/100/1000 Hz; `2.5 kHz`,
+  `500 mHz`, `500 mV`, `0.1 V`), *Ramp period* `10 ms` → 77 (triangle) / 155 (sawtooth), clamp 2147483520, no "-0 mV",
+  no tooltips, Lock osc. screen (0 … 4.992 ms in triangle, 0 … 9.985 ms in sawtooth, zoom → limits as the model, 0.2 Hz
+  continuous update, Single turns it off), Reset zoom 9.984 / 4.992 ms alternating, Force X 10/10; Reset zoom with
+  harmonic mod. still one period of the modulation, 120·(hp+1) cycles (hp 0: 0.96 µs, hp 20: 20.16 µs), on every
+  click; no console errors. The regression LOCK MODE (`lock_in+pid_harmonic_hf__lock_mode.json`, 49.6 kHz) could not
+  be verified on the current bench: the loop locked (error $-0.10 \pm 5.49$ mV) but away from the peak (IN1 0.065 V
+  against ~0.45 V), because `dummy_simulator` on the other board ran without its low-pass filter; the same happened
+  with `lock_in+pid_harmonic` 2.3.31 on that bench, and v2.3.21 changes only the web page.
+- Documentation (`doc/*.md`, README) updated for v2.3.21 in the commit that carries the tag `v2.3.21`.

@@ -1,11 +1,12 @@
 # Internal structure
 
-How `lock_in+pid_harmonic_hf` v2.3.15 is built (the same structure as `lock_in+pid_harmonic` 2.3.24; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
+How `lock_in+pid_harmonic_hf` v2.3.21 (branch `master`) is built (the same structure as `lock_in+pid_harmonic` 2.3.31; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
 how the instruments are connected inside the FPGA. Registers: [FPGA.md](FPGA.md). Specifications:
 [App.md](App.md). Source tree and build: [Devel.md](Devel.md).
 
 - [Layers](#layers)
 - [Web page ↔ server](#web-page--server)
+  - [Time window of the plot and Force X](#time-window-of-the-plot-and-force-x)
 - [Server ↔ FPGA: the C controller](#server--fpga-the-c-controller)
 - [Inside the FPGA](#inside-the-fpga)
   - [Top level](#top-level)
@@ -78,6 +79,65 @@ saved in `localStorage` (key `lockConfig_lock_in+pid_harmonic_hf`). A Config →
 (`send_all`, 5-9 chunks) except the time-scale values derived by the server (`send_all_skip`: `forcex_flag`,
 `time_units`, `time_range`, `gui_xmin`, `gui_xmax`), and takes the window and units of the answer of the last
 chunk (`configLoadApplyX()`, v2.3.11).
+
+Ramp Controller (v2.3.21, page only, ported from `lock_in+pid_harmonic` 2.3.31 / `lock_in+pid_plus` 2.2.0): the tabs
+*period* / *freq* and *Lock osc. screen* are the `[RAMP CALC]` (pure functions: period, frequency, f → step,
+amplitude / offset ↔ limits, zoom → limits; also run by `test/ramp_ui_sim.js`) and `[RAMP UI]` blocks of `index.html`
+(l. 3413-3639 and 3641-3951; the period of the ramp, `rampPeriodCycles()`, is in `[TRIG FROM GRAPH]`, l. 3215, and the
+windows of *Reset zoom* / *Lock osc. screen*, `resetZoomWindow()` and the whole / half cycle `resetZoomCycleNext()`, in
+`[RESET ZOOM]`, l. 3300-3411, with `modPeriodCycles()` = `PERIOD_LEN`·(hp+1) = 120·(hp+1) cycles for harmonic mod.,
+l. 3322). They only write the existing parameters `lock_ramp_step`, `lock_ramp_low_lim`, `lock_ramp_hig_lim` (one POST)
+and, for *Lock osc. screen*, the scope parameters `trig_source`, `trig_mode`, `lock_trig_sw` and the time window
+(`xmin` / `xmax`), as *Reset zoom* does. Their state (active tab in `localStorage` key
+`lockin_ramp_tab_lock_in+pid_harmonic_hf`, l. 3650; `ramp_ls`, `ramp_f_nominal`) is not part of the parameters nor of
+the configs. No change in the controller nor in the FPGA ([Usage.md](Usage.md#ramp-controller)). The *Ramp period*
+field is a text field whose parser is in `input_unit_parsers` (l. 2468-2471, `rampStepParseField()` → `rampParseStep()`),
+like the *Time trigger* / *Level trigger* fields.
+
+### Time window of the plot and Force X
+
+The time window of the scope is a pair of parameters, `xmin` / `xmax`, in the **time units** of the server
+(`time_units`: 0 µs, 1 ms, 2 s), which follow the decimation (`time_range`) that the controller chooses for the window
+(`transform_acq_params()`, `src/main.c` l. 656). When a POST changes the units (e.g. a window of 0 … 2 s followed by a
+*Reset zoom* to 0 … 9.984 ms), the controller converts the window to the new units and raises **`forcex_flag`**
+(`src/main.c` l. 103-108, set at l. 800-818): the page must put its X axis on the `xmin` / `xmax` of the server. The
+flag stays 1 in the answer of that POST **and in every `GET /data`** until the page sends the next POST: one that
+only sends the window back (`rp_set_params()`, l. 995-998), or a scope change whose window is within a factor 33 of
+the forced one or comes more than 1.5 s after it (`FORCEX_STALE_MS`, l. 470, 700-702). These lines of `main.c` are the
+same as in `lock_in+pid_harmonic` 2.3.31.
+
+Up to v2.3.20 the page applied the forceX of every GET. A GET that was in flight when the page set a new window
+(the second click of *Reset zoom*, 0 … T/2) brought ~70 ms later the window of the first click; and the repeated flag
+undid a wheel / box zoom made from t = 0 during the 250 ms before its POST (found on `lock_in+pid_plus` 2.2.0-rc3,
+2 of 4 tries). Since **v2.3.21** the `[FORCEX]` block (`index.html` l. 332-359) filters it:
+
+| Piece | Where | What it does |
+|---|---|---|
+| `xwin_gen` / `xWindowLocal()` | l. 346-348 | counter of "the page touched the X window": +1 in `lockSetXWindow()` (l. 4031-4032, used by Reset zoom, Lock osc. screen, Capture Lock), `xWindowToParams()` (l. 5095-5096), X± (l. 553), the X offset buttons (l. 622), the X zoom of the wheel (l. 5144), and at the start (l. 5905) and at the answer (l. 5928) of every POST |
+| `get_xgen` | l. 4795 | value of `xwin_gen` when a `GET /data` starts (as `get_epoch` = `plot_epoch` for the data, v2.3.14 = `_h` v2.3.23, l. 331) |
+| `getForceXApply(p, get_epoch, get_xgen)` | l. 351-358, used at l. 4894 | the forceX of a GET answer is applied only if `forcex_flag` = 1, the GET started after the last Reset zoom was answered (`get_epoch === plot_epoch`), nothing touched the X window nor sent / got a POST since the GET started (`get_xgen === xwin_gen`), and its window (`xmin`, `xmax`, `time_units`: `forceXKey()`) is not the one of the last forceX applied |
+| `forcex_last` | l. 347; set at l. 5955 | the forceX of a POST answer is applied as before and remembered, so the GETs that repeat it do not apply it again |
+
+`plot_epoch` alone (v2.3.14) was not enough: it moves only with Reset zoom and Lock osc. screen, not with the box,
+the wheel or X±. A forceX that is not stale (e.g. another client sets 0 … 2 s and the units change) still reaches
+the page, once. Checked by `test/forcex_race_sim.js` (7/7; with `--old` on v2.3.20: 4/6) and on RP2 (report
+`reportes/lock-in_pid_h_hf/2026-11-13_1520_v2321.md`: 10/10 second clicks from an axis in seconds, after waits of 0 to
+12 s, stayed at 0 … 4.992 ms, measured 3 s and 6 s later; after a forceX, a wheel zoom from t = 0 (0 … 6.656 ms) and a
+box from the left edge (0.024 … 3.890 ms) stayed 6 s). No change in the controller.
+
+```mermaid
+sequenceDiagram
+  participant P as page (index.html)
+  participant S as controller (main.c)
+  P->>S: POST xmin/xmax (click 1: 0..9.984 ms, from s)
+  S-->>P: answer: forcex_flag 1, 0..9.984 ms (applied, forcex_last)
+  Note over P: GET /data starts (get_xgen = n)
+  P->>P: click 2: lockSetXWindow(0..4.992 ms), xwin_gen = n+1
+  S-->>P: GET answer: forcex_flag 1, 0..9.984 ms (repeated)
+  Note over P: get_xgen != xwin_gen and key = forcex_last: not applied
+  P->>S: POST 0..4.992 ms
+  S-->>P: answer: forcex_flag 0
+```
 
 ## Server ↔ FPGA: the C controller
 
@@ -212,11 +272,11 @@ Main points (with the lines of `lock.v`):
   with the sign changed. `gen_mod_phase` (0..119) offsets the address of `cos_1f..3f`. `harmonic_trig` marks the
   start of each period (Ext Trig "harmonic mod."). f = 125 MHz / (120 · (`gen_mod_hp` + 1)) = 1.04 MHz .. 63.6 Hz.
 - **Lock-in** (l. 727-909): `signal_i` is multiplied by the five references (DSP multipliers), filtered by two
-  cascaded first-order low-pass filters per line (A and B, `LP_filter3`), scaled by 2^`sg_amp` and saturated
+  cascaded first-order low-pass filters per line (A and B, `LP_filter3`), scaled by $2^{\mathrm{sg\_amp}}$ and saturated
   to 14 bits. X and Y use `cos_ref` and `sin_ref` with 38-bit paths (10 more bits of resolution) and share
   `lpf_F0`/`sg_amp0`; F1, F2 and F3 use `cos_1f`, `cos_2f`, `cos_3f` and have their own filter and gain.
 - **Error** (l. 557-582): one of 0, Xo, Yo, F1o, F2o, F3o, in1, in1−in2, minus `error_offset`; its mean and
-  square are accumulated over 2²⁷ ticks for the Monitor.
+  square are accumulated over $2^{27}$ ticks for the Monitor.
 - **PIDs** (l. 914-1010): each PID takes a signal (`pidX_sw`), computes P, I, D (`lock_pid_block.v`) and its
   output is forced to 0 (and the integrator reset) when the lock control disables it.
 - **Control signals** (l. 281-288): `ctrl_A = pidA_out + ramp_A + jumpA`, `ctrl_B = pidB_out + ramp_B + jumpB`,

@@ -1,9 +1,9 @@
 # Remote control
 
-How to control `lock_in+pid_harmonic_hf` **v2.3.15** from a program, without the web page. The registers are
+How to control `lock_in+pid_harmonic_hf` **v2.3.21** (branch `master`; nothing of the remote control changed in v2.3.21, which only changes the web page) from a program, without the web page. The registers are
 described in [FPGA.md](FPGA.md); the meaning of each instrument in [App.md](App.md).
 
-The remote control is the one of `lock_in+pid_harmonic` 2.3.17 (later versions of `_h`, up to 2.3.24, did not change it; same endpoints, `c/` tools, `py/` scripts and
+The remote control is the one of `lock_in+pid_harmonic` 2.3.17 (later versions of `_h`, up to 2.3.31, did not change it; same endpoints, `c/` tools, `py/` scripts and
 `control_finn.py`), with the HF period of the modulation: **f = 125 MHz / (120 · (`gen_mod_hp` + 1))** and
 **`gen_mod_phase` 0..119** (`PERIOD_LEN = 120` in `control_finn.py`). **Version numbers v2.3.12 to v2.3.17 in
 this page are versions of `lock_in+pid_harmonic`**, where each feature was introduced and tested; this App
@@ -104,7 +104,7 @@ The register list (name, index, signed, read-only, min, max) is served at
 (`in1` while it crosses zero, `oscA` showing `in1`) returned 32 bits of garbage (e.g. `0x0118c9c1`), out of the
 14-bit range. Averages of `in1` read through `/lock` with an older FPGA must discard impossible values. Since
 v2.3.10 of this App the reads are exact: 0 bad reads in 2000 reads of `in1` and of `oscA` with the ramp running
-(testAgent 2026-10-10 15:15; 0 in 8·10⁶ dense reads in `_h` v2.3.17; cause and fix in [FPGA.md](FPGA.md#lock-module-0x40600000)). The value
+(testAgent 2026-10-10 15:15; 0 in $8\cdot 10^{6}$ dense reads in `_h` v2.3.17; cause and fix in [FPGA.md](FPGA.md#lock-module-0x40600000)). The value
 read is the one of the clock before the read (one more clock of latency, bus reads only).
 
 ### `/osc`: oscilloscope registers and memory
@@ -343,7 +343,7 @@ Added in v2.3.15 (each one writes only the arguments given and returns the resul
 | `rp.get_freq()`, `rp.get_period()`, `rp.set_freq(hp)`, `rp.set_freq_hz(f)` | modulation frequency (`gen_mod_hp` 0..16383; f = 125 MHz / (120·(hp+1)); `set_freq_hz` takes the closest value, **63.58 Hz .. 1.0417 MHz**; e.g. `set_freq_hz(10e3)` → hp 103 = 10.016 kHz) |
 | `rp.set_phase(val)` | phase of `cos_1f..3f`, **0..119, 3° per step** (returns degrees; `ValueError` outside 0..119, e.g. the `set_phase(630)` of the `_h` example) |
 | `rp.set_modulation_amplitud(val, ch='out1')` | `mod_out1`/`mod_out2` (−1 off .. 8191; returns the amplitude in V, `val/16384`) |
-| `rp.set_lpf(tau_exponent, order, line)`, `rp.get_lpf(line=None)` | low-pass filters: τ = 8 ns·2^tau_exponent (14..29), order 0..2, `line` `'ref'` (X,Y), 1, 2, 3, `'all'` or a list |
+| `rp.set_lpf(tau_exponent, order, line)`, `rp.get_lpf(line=None)` | low-pass filters: $\tau = 8\ \mathrm{ns}\cdot 2^{\mathrm{tau\_exponent}}$ (14..29), order 0..2, `line` `'ref'` (X,Y), 1, 2, 3, `'all'` or a list |
 | `rp.set_gain(line, amp)` | `sg_amp0..3` (exponent or label `'x32'`; returns the factor) |
 | `rp.get_XY(units='V', F=False)` | X, Y (and F1..F3) from the 28-bit registers, read at the same instant (`read_ctrl[0]`). X from `cos_ref` (in phase), Y from `sin_ref` |
 | `rp.set_pid(pid='A', sw, sp, kp, ki, kd, PSR, ISR, DSR, SAT, ctrl)`, `rp.get_pid(pid)`, `rp.pid_reset(pid)` | PID A / B (labels accepted: `PSR='/1024'`, `ISR='537 ms'`); `get_pid` adds `in`, `out` and the effective `enabled` from `lock_status`; `pid_reset` pulses the integrator reset |
@@ -411,9 +411,34 @@ rp.set_manual(ramp=True, pidA=False, pidB=False)          # "Scan enable": the r
 print(rp.get_pid('A'), rp.get_ramp(), rp.lock_status())
 ```
 
-Ramp period: `T = (high − low) · (step + 1) · 8 ns · (2 − sawtooth)` ([FPGA.md](FPGA.md#ramp-scan)). With
+Ramp period: `T = N · (step + 1) · 8 ns`, N = 2·(high − low) (triangle) or (high − low) + 1 (sawtooth)
+([FPGA.md](FPGA.md#ramp-scan); up to v2.3.20 this page had the sawtooth one step short). With
 `step=100, ±4000` (the ramp of the `_h` example before its v2.3.17) the period is 12.9 ms, shorter than a
 16.58 ms time trigger, which then never fires.
+
+`control_finn.py` has no helper to set the ramp by frequency (the *freq* tab of v2.3.21 is only in the web page). The
+same computation, with the formulas of [App.md](App.md#ramp-generator-scan):
+
+```python
+def ramp_by_freq(rp, f_hz, amp, off=0, sawtooth=False, **kw):
+    """Ramp of amplitude amp (counts, hig - low) around off (counts) at the nearest frequency to f_hz."""
+    low = int(off) - int(amp) // 2           # as the freq tab: low = off - floor(amp/2), high = low + amp
+    high = low + int(amp)
+    assert -8192 <= low < high <= 8191
+    n = (high - low + 1) if sawtooth else 2 * (high - low)   # steps per period
+    step = max(0, round(125e6 / (n * f_hz) - 1))
+    f_real = 125e6 / (n * (step + 1))
+    rp.set_ramp(step=step, low=low, high=high, sawtooth=sawtooth, **kw)
+    return step, f_real
+
+print(ramp_by_freq(rp, 100, 8000, enable=True))   # (77, 100.16...) as the web page (board test v2.3.21)
+```
+
+`round()` takes the nearest step, not exactly the nearest frequency as the page does (`rampStepForFreq()` compares the
+two neighbouring steps); the difference is at most one step. Written through `/lock` the register takes any 32-bit
+step; the web page only uses float32 integers (see [App.md](App.md#ramp-generator-scan)). The docstring of
+`set_ramp()` (`control_finn.py` l. 1462) calls `direction` the "starting direction (triangle)"; in `gen_ramp.v` a
+triangle always rises after the scan floor ([FPGA.md](FPGA.md#ramp-scan)).
 
 ### Close and check a lock
 
@@ -467,8 +492,8 @@ Notes:
   the same value again does nothing (so the C controller rewriting registers does not disturb a lock).
 - The ramp runs only if `ramp_enable` (0x0B0) is also 1.
 - Changing a manual enable (bits 4:2) while LOCKED releases the lock.
-- `lock_trig_time` is 32 bits unsigned (up to 34.36 s; up to v2.3.10 values ≥ 2³¹ aliased). Written
-  through `/lock` the value is exact; written from the web page it is rounded to float32 above 2²⁴ ticks
+- `lock_trig_time` is 32 bits unsigned (up to 34.36 s; up to v2.3.10 values ≥ $2^{31}$ aliased). Written
+  through `/lock` the value is exact; written from the web page it is rounded to float32 above $2^{24}$ ticks
   ([FPGA.md](FPGA.md#lock-control-auto-lock), note on `lock_trig_time`).
 - Since v2.3.14 (FPGA) the time trigger only counts from a scan floor of a ramp that kept running: a Trigger Lock
   armed right after a release or with the ramp stopped waits for the next floor and fires at floor + time (before,
@@ -478,7 +503,7 @@ Notes:
   (with `--status`, `--release`, `--now`, `--force`); tested on the board with this App (v2.3.11): `--trig time --time
   16.58ms --set pidA` and `--trig level --level 5085` LOCKED in 0.011 s, the page followed the state, the Time
   field and the trigger type with 0 POST. Up to v2.3.11 `--time 40s` failed with `OverflowError`; since v2.3.12 the
-  time is clamped to 0..2³²−1 ticks with a message.
+  time is clamped to 0..$2^{32}-1$ ticks with a message.
 
 ### Read an oscilloscope acquisition
 

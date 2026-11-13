@@ -1,8 +1,17 @@
 # RP Lock-in+PID Harmonic HF — documentation
 
-Documentation of `lock_in+pid_harmonic_hf` **v2.3.15** (branch `master`, Ecosystem 2.0, FPGA built with
-Vivado 2020.1): the App `lock_in+pid_harmonic` 2.3.24 with a harmonic modulation of 63.6 Hz to 1.04 MHz.
+Documentation of `lock_in+pid_harmonic_hf` **v2.3.21** (package 2.3.21-26, branch `master`, Ecosystem 2.0, FPGA built
+with Vivado 2020.1; the FPGA is the one of v2.3.14 … v2.3.20, v2.3.21 changes only the web page): the App
+`lock_in+pid_harmonic` 2.3.31 with a harmonic modulation of 63.6 Hz to 1.04 MHz.
 Back to the [project README](../README.md) · [CHANGELOG](../CHANGELOG.md).
+
+New in v2.3.21 (the Ramp Controller of `lock_in+pid_plus` 2.2.0, as `lock_in+pid_harmonic` 2.3.31): the *Ramp
+Controller* of the web page sets the ramp by period (steps, or the whole period in `s` / `ms`) or by frequency /
+amplitude / offset, and *Lock osc. screen* shows the rising half of a triangle (one period of a sawtooth) and turns a
+time zoom of the scope into new ramp limits: [Usage.md](Usage.md#ramp-controller), formulas in
+[App.md](App.md#ramp-generator-scan). *Reset zoom* with Scan floor and a triangle alternates whole period / rising half
+([Usage.md](Usage.md#reset-zoom-whole-period--rising-half)); with harmonic mod. it still gives one period of the HF
+modulation. The *Force X* of the server is applied once ([Structure.md](Structure.md#time-window-of-the-plot-and-force-x)).
 
 | Document | Contents |
 |---|---|
