@@ -1,6 +1,6 @@
 # Using the App from the web interface
 
-How to use `lock_in+pid_harmonic_hf` **v2.3.21** (branch `master`) from the browser, panel by panel, and the usual procedures:
+How to use `lock_in+pid_harmonic_hf` **v2.3.22** (branch `master`) from the browser, panel by panel, and the usual procedures:
 scan, see a peak, get an error signal with the lock-in, close a lock and check it. Technical data of each
 instrument is in [App.md](App.md); registers in [FPGA.md](FPGA.md).
 
@@ -88,8 +88,8 @@ focused number field the wheel changes the value by one step.
 
 Since v2.3.21 (port of `lock_in+pid_harmonic` 2.3.31, from `lock_in+pid_plus` 2.2.0), with *Source* = External,
 *Ext Trig* = **Scan floor** and a **triangle** ramp (and *Lock osc. screen* off), **each click of Reset zoom
-alternates** between the whole period and the rising half (`resetZoomCycleNext()`, `index.html` l. 3387, used by
-`resetZoom()`, l. 6264):
+alternates** between the whole period and the rising half (`resetZoomCycleNext()`, `index.html` l. 3494, used by
+`resetZoom()`, l. 6450):
 
 1. first click: 0 … T (one whole period, as before; 0 … 0.98 T for T ≥ 1.5 s, see [Slow scans](#slow-scans));
 2. next click: **0 … T/2**, the rise from the scan floor to the top (a triangle always rises after the floor,
@@ -104,7 +104,7 @@ load: the parameters are compared too), or a window on the plot different from t
 With *Scan ceil* (its first half after the trigger is the fall), a **sawtooth**, *harmonic mod.* or another *Ext
 Trig* or *Source*, Reset zoom gives one period / one memory on every click, as before; with *Lock osc. screen* on, it
 gives the window of Lock osc. screen. With **harmonic mod.** the window is one period of the HF modulation,
-120·(hp+1) cycles of 8 ns (`modPeriodCycles()`, l. 3322; `PERIOD_LEN` = 120, l. 154), never a half.
+120·(hp+1) cycles of 8 ns (`modPeriodCycles()`, l. 3429; `PERIOD_LEN` = 120, l. 154), never a half.
 
 Measured on the board (v2.3.21, ±4000 at 100 Hz, triangle): the clicks gave 0 … 9.984 / 4.992 / 9.984 / 4.992 ms; after
 a wheel zoom the next click gave 9.984 ms again and the following one 4.992 ms; sawtooth: 9.985 ms 3 times out of 3;
@@ -197,7 +197,7 @@ is in [App.md](App.md#ramp-generator-scan).
 
 ![Tab period: Ramp period 77 (τ = 9.98 ms, f = 100.16 Hz), limits ±4000, inside the box of the tab; below, Ramp B factor, Lock osc. screen and the four checkboxes in two columns (v2.3.21)](.Usage/ramp_tab_period_box_checkboxes.jpg)
 
-Layout of the panel (top to bottom, `index.html` l. 8527-8723):
+Layout of the panel (top to bottom, `index.html` l. 8713-8909):
 
 - the tabs **period | freq**; the fields of the active tab are inside a box closed by the grey line of the tabs
   (1 px `#dddddd`, CSS `.ramp-tab-pane`, l. 37-46), so it is clear which controls belong to the tab;
@@ -209,7 +209,7 @@ Layout of the panel (top to bottom, `index.html` l. 8527-8723):
   also be on); *Scan direction* is the direction of the sawtooth (a triangle always rises after the scan floor, see
   [App.md](App.md#ramp-generator-scan)); *Sawtooth* unchecked = triangle.
 
-Labels in mV that round to zero show "0 mV", never "-0 mV" (`toFixedNz()`, l. 2006; also V<sub>trg</sub> of the
+Labels in mV that round to zero show "0 mV", never "-0 mV" (`toFixedNz()`, l. 2113; also V<sub>trg</sub> of the
 lock trigger). Board test v2.3.21: with −2 counts in low, hig and Vtrg the labels read "0 mV", and the *freq* tab
 "(low −488 mV, high 0 mV)".
 
@@ -218,15 +218,15 @@ lock trigger). Board test v2.3.21: with −2 counts in low, hig and Vtrg the lab
 Only the active tab is visible, so there is only one way of editing the ramp at a time. Clicking the other tab
 first applies the edit in progress (as leaving the field) and then **loads the fields of the new tab from the
 parameters of the board** (including changes made by another client or a config load); `rampTabSet()`,
-`index.html` l. 3674. The last tab used is kept in the browser (`localStorage`, key
-`lockin_ramp_tab_lock_in+pid_harmonic_hf`, `ramp_tab_key` l. 3650) and comes back after a reload. The page opens on
+`index.html` l. 3781. The last tab used is kept in the browser (`localStorage`, key
+`lockin_ramp_tab_lock_in+pid_harmonic_hf`, `ramp_tab_key` l. 3757) and comes back after a reload. The page opens on
 *period* when nothing is saved.
 
 **Tab period**:
 
 | Field | Units | What it does |
 |---|---|---|
-| **Ramp period** | `ramp_step` (clock ticks per step − 1), or **the whole period** with a unit: `s`, `seg`, `ms`, `us` (`10 ms`, `0.5 s`, `10ms`; decimal point or comma) | A number alone is the step. A period is converted to the step whose whole period *T* (below) is the nearest one (`rampStepForPeriod()` / `rampParseStep()`, l. 3447-3468) |
+| **Ramp period** | `ramp_step` (clock ticks per step − 1), or **the whole period** with a unit: `s`, `seg`, `ms`, `us` (`10 ms`, `0.5 s`, `10ms`; decimal point or comma) | A number alone is the step. A period is converted to the step whose whole period *T* (below) is the nearest one (`rampStepForPeriod()` / `rampParseStep()`, l. 3554-3575) |
 | **Ramp hig lim**, **Ramp low lim** | counts (8192 = 1 V) | Limits of the ramp. Below each field: the limit in mV. They do not accept `mV` / `V` from the page (see [Known limitations](#known-limitations-of-the-interface)); the *freq* tab does |
 
 The period of *Ramp period* is that of the whole ramp, from scan floor to scan floor:
@@ -242,8 +242,8 @@ so it depends on the limits and on the waveform.
   previous value.
 - A text that is not valid (`10 kg`, `abc`, a negative value), or a period with *Ramp hig lim* = *Ramp low lim*, is
   not sent: a red hint appears below ("? steps, or a period with units: s, ms, us" or "? a period needs Ramp hig
-  lim &gt; Ramp low lim", l. 2072-2073) and the last value comes back.
-- The step is limited to **0 … 2147483520** ($2^{31}-128$, `ramp_step_max`, l. 3425) and rounded as the float32
+  lim &gt; Ramp low lim", l. 2179-2180) and the last value comes back.
+- The step is limited to **0 … 2147483520** ($2^{31}-128$, `ramp_step_max`, l. 3532) and rounded as the float32
   parameter of the controller (above $2^{24}$ only every 2nd, 4th … 128th integer exists): `4294967295` or `1e6 s`
   give 2147483520.
 - Mouse wheel ±1, SHIFT ×10, CTRL ×100, both ×1000 (above $2^{24}$ the wheel ±1 does not move the step, see
@@ -251,7 +251,7 @@ so it depends on the limits and on the waveform.
 - Below the field: τ (the whole period) and f of the ramp.
 - Checking or unchecking *Sawtooth* with the *period* tab active keeps the step, so the period changes (77 with ±4000:
   9.98 ms in triangle, 4.99 ms in sawtooth).
-- No tooltip on the label nor the input; a click on the label "Ramp period" opens the help (l. 1934-1938).
+- No tooltip on the label nor the input; a click on the label "Ramp period" opens the help (l. 2041-2045).
 
 Up to v2.3.20 the field was an `<input type="number">`, so a period with units never reached the page, and the old
 conversion took (hig − low) steps, half the period of a triangle; the τ of a sawtooth was one step short.
@@ -276,11 +276,11 @@ measured on the scope trace with the same page code and the same `gen_ramp.v` (`
 
 | Field | Units | What it does |
 |---|---|---|
-| **Frequency** | Hz, or with units: `2.5 kHz`, `10 Hz`, `500 mHz`, `1e3`, `1.5M` (`parseRampFreq()`, l. 3521; `abc`, `-5` are rejected) | Enter (or leaving the field) sets the `ramp_step` whose frequency is the **nearest one** to the value typed, for the current amplitude and waveform (`rampStepForFreq()`, l. 3473). The field then shows the **real** frequency; the text below shows f, τ, the step, the waveform and, if it differs, the value set ("set 100.0000 Hz"). No tooltip. |
-| **Amp. p-p** | counts (8192 = 1 V), or `500 mV`, `0.5 V` (`parseRampCounts()`, l. 3512) | Peak-to-peak amplitude = hig − low. Changing it **keeps the frequency** set by the user: the step is recomputed. Text below: mVpp and the two limits in mV. |
+| **Frequency** | Hz, or with units: `2.5 kHz`, `10 Hz`, `500 mHz`, `1e3`, `1.5M` (`parseRampFreq()`, l. 3628; `abc`, `-5` are rejected) | Enter (or leaving the field) sets the `ramp_step` whose frequency is the **nearest one** to the value typed, for the current amplitude and waveform (`rampStepForFreq()`, l. 3580). The field then shows the **real** frequency; the text below shows f, τ, the step, the waveform and, if it differs, the value set ("set 100.0000 Hz"). No tooltip. |
+| **Amp. p-p** | counts (8192 = 1 V), or `500 mV`, `0.5 V` (`parseRampCounts()`, l. 3619) | Peak-to-peak amplitude = hig − low. Changing it **keeps the frequency** set by the user: the step is recomputed. Text below: mVpp and the two limits in mV. |
 | **Offset** | counts, or `mV` / `V` | Centre of the ramp, floor((hig + low)/2). Changing it does not change the frequency. Text below: mVdc. |
 
-- Step, low and high limits go to the board in one POST (`rampSetRegs()`, l. 3748).
+- Step, low and high limits go to the board in one POST (`rampSetRegs()`, l. 3855).
 - If the amplitude does not fit with the offset (limits −8192 … 8191), the amplitude is reduced (editing the
   Offset, the offset is limited for the amplitude).
 - **Mouse wheel on Frequency**: ±1 Hz, SHIFT ±10 Hz, CTRL ±100 Hz, both ±1000 Hz, counted from the **nominal**
@@ -288,10 +288,10 @@ measured on the scope trace with the same page code and the same `gen_ramp.v` (`
   that little (high frequencies, large amplitudes), or f − 1 Hz would be ≤ 0, the wheel moves the register by
   **one step** in the direction asked (the minimum move of the instrument; it never stays still), and the real
   frequency becomes the new nominal one. At step 0 (the highest frequency for that amplitude) it does not move
-  further (`rampFreqWheelTarget()`, l. 3549).
+  further (`rampFreqWheelTarget()`, l. 3656).
 - **Mouse wheel on Amp. p-p / Offset**: ±1, SHIFT ×10, CTRL ×100, both ×1000 counts.
 - **Sawtooth** checked or unchecked while the *freq* tab is active (or *Lock osc. screen* is on): the frequency is
-  kept and the step is recomputed for the new number of steps (`rampSawtoothKeep()`, l. 3793). With the *period* tab
+  kept and the step is recomputed for the new number of steps (`rampSawtoothKeep()`, l. 3900). With the *period* tab
   active the step is kept, so the frequency changes (triangle → sawtooth roughly doubles it).
 
 Measured on the board (v2.3.21, triangle, report `reportes/lock-in_pid_h_hf/2026-11-13_1520_v2321.md`):
@@ -324,7 +324,7 @@ A checkbox below *Ramp B factor* (off by default) that locks the scope screen to
 of the plot into a change of the ramp limits**: zooming on a part of the scan (e.g. around a peak) makes the ramp scan
 only that zone, at the same frequency, and the screen shows it over the whole window.
 
-**The window** (`rampLockScreenWindow()`, l. 3843, which uses `resetZoomWindow(.., half)`, l. 3345):
+**The window** (`rampLockScreenWindow()`, l. 3950, which uses `resetZoomWindow(.., half)`, l. 3452):
 
 | Waveform | Window | Why |
 |---|---|---|
@@ -334,11 +334,11 @@ only that zone, at the same frequency, and the screen shows it over the whole wi
 
 The status text below the checkbox shows the window ("window 0 .. 4.992 ms (rising half: T/2)", "(slow scan: 0.98 T)",
 or "(longest memory, the half period is …)" when the window is longer than 68.7 s and is clamped). The axis is set
-to that window whenever it differs from it by more than $10^{-4}$ of the window (`ramp_ls_tol`, l. 3654).
+to that window whenever it differs from it by more than $10^{-4}$ of the window (`ramp_ls_tol`, l. 3761).
 
 ![Lock osc. screen on: 100 Hz triangle (Amp. p-p 8000), Scan floor, window 0 … 4.992 ms = T/2: Ramp A (red) rises once from −488 mV to 488 mV over the window (v2.3.21; the ramp was internal, blue in1 is the noise of the bench)](.Usage/lock_osc_screen_triangle_rising_half_100Hz.jpg)
 
-**Turning it on** (`rampLockScreenOn()`, l. 3900):
+**Turning it on** (`rampLockScreenOn()`, l. 4007):
 
 - the scope trigger becomes *Ext Trig* = **Scan floor**, *Source* = **External**, *Mode* = **Normal** (as when
   choosing an Ext Trig);
@@ -346,13 +346,13 @@ to that window whenever it differs from it by more than $10^{-4}$ of the window 
 - a *Capture Lock* in progress ends first;
 - the text below the checkbox shows the window and "Time zoom (SHIFT+wheel, box, X±) → ramp limits".
 
-**Zoom while it is on** (`rampLockScreenFromX()`, l. 3935, and `rampZoomToLims()`, l. 3610):
+**Zoom while it is on** (`rampLockScreenFromX()`, l. 4042, and `rampZoomToLims()`, l. 3717):
 
 | Action on the plot | Effect |
 |---|---|
 | **SHIFT + wheel**, a **box selection**, the **X− / X+** buttons of *Range* (time zoom) | New `ramp_low_lim` / `ramp_hig_lim`: the values that the ramp has at the two ends of the window zoomed. **Triangle**: the straight line of the rise, $v(t) = \mathrm{low} + \mathrm{amp}\cdot t/(T/2)$, also outside 0 … T/2 (zoom out, pan). **Sawtooth**: the straight line of the sawtooth, extended outside 0 … T. The **frequency of the whole period is kept** (step recomputed with the new N) and the window goes back to the new T/2 (triangle) or T (sawtooth), so the zone chosen fills the screen. |
 | The Y part of a box selection | Zooms Y (only in the page), as usual. |
-| A box over the **whole width** of the view (within 2 % at each end) | No time zoom: the ramp does not change, only Y is zoomed (`rampZoomIsView()`, l. 3635). |
+| A box over the **whole width** of the view (within 2 % at each end) | No time zoom: the ramp does not change, only Y is zoomed (`rampZoomIsView()`, l. 3742). |
 | **Wheel without keys** | Y only (normally it zooms both axes); **ALT + wheel**: Y only, as before. The registers do not change. |
 | **Reset zoom** | Gives the window of Lock osc. screen again. |
 
@@ -381,7 +381,7 @@ follows that line.
 ![Sawtooth with Lock osc. screen: whole period 0 … 9.985 ms (step 155, 100.1477 Hz); Ramp A (red) falling with Scan direction 0 (v2.3.21)](.Usage/lock_osc_screen_sawtooth_whole_period.jpg)
 
 **The window follows the ramp**: any change of step, limits or waveform (either tab, the wheel on the fields,
-another client, a config load) sets the window again (only when the ramp changed; `rampLockScreenSync()`, l. 3865).
+another client, a config load) sets the window again (only when the ramp changed; `rampLockScreenSync()`, l. 3972).
 The trace is cleared only if the window really changes: a zoom that keeps the frequency keeps the acquisition in
 progress. Windows longer than 68.7 s are clamped to the longest memory (shown in the text).
 
@@ -398,12 +398,12 @@ Example (v2.3.21, 0.2 Hz triangle ±4000, T = 5 s, step 39062): window 0 … 2.5
 
 ![0.2 Hz triangle: window 0 … 2.5 s (T/2), the trace half drawn while it is acquired (v2.3.21)](.Usage/lock_osc_screen_slow_0.2Hz_rising_half.jpg)
 
-**Turning it off** (`rampLockScreenOff()`, l. 3922):
+**Turning it off** (`rampLockScreenOff()`, l. 4029):
 
 - unchecking it: the trigger (External / Normal / Scan floor) and the time window **stay as they are**; only the
   normal time zoom of the plot comes back (SHIFT + wheel zooms the view again, without touching the ramp);
 - choosing another *Source*, *Ext Trig* or *Mode* in the page (also *Mode* = Single), pressing **AUTO**
-  (`serverAutoScale()`, l. 6677), or pressing **Single** (`singleUpdate()`, l. 6172) also turns it off, with the same
+  (`serverAutoScale()`, l. 6863), or pressing **Single** (`singleUpdate()`, l. 6358) also turns it off, with the same
   rule (trigger and window kept, the choice of the user applied);
 - it is **not saved** in the configs (it is a state of the page: after a reload it is off).
 
@@ -537,8 +537,8 @@ Since v2.3.14 (port of `lock_in+pid_harmonic` v2.3.23, see the CHANGELOG):
 ## Typing values with units
 
 The **Time trigger** and **Level trigger** fields of *Lock Control → config* are text fields that accept a number
-with a unit (`index.html` l. 2440-2471: `parseTrigTime()` l. 2454, `parseTrigLevel()` l. 2461, `input_unit_parsers`
-l. 2468):
+with a unit (`index.html` l. 2547-2578: `parseTrigTime()` l. 2561, `parseTrigLevel()` l. 2568, `input_unit_parsers`
+l. 2575):
 
 | Field | Without unit | Units | Range | Examples |
 |---|---|---|---|---|
@@ -560,7 +560,7 @@ Tested on the board with this App (v2.3.11, testAgent 2026-10-10 19:35): `16.58 
 ![Time trigger typed as "20 s" (same UI, screenshot of lock_in+pid_harmonic)](.Usage/h_time_trigger_units_20s.png)
 
 Since v2.3.21 **Ramp period** (tab *period* of the Ramp Controller) is also a text field with units: steps, or the
-whole period of the ramp in `s`, `seg`, `ms`, `us` (`rampStepParseField()`, l. 3658, in `input_unit_parsers`), sent
+whole period of the ramp in `s`, `seg`, `ms`, `us` (`rampStepParseField()`, l. 3765, in `input_unit_parsers`), sent
 with Enter or when leaving the field and rewritten in steps ([Tabs period and freq](#tabs-period-and-freq)). The fields
 of the *freq* tab accept units too (*Frequency* in Hz / kHz / mHz…, *Amp. p-p* and *Offset* in counts or `mV` / `V`).
 
@@ -570,10 +570,10 @@ the UI (the same was found for *Ramp period* in `lock_in+pid_plus` 2.2.0-rc2, CH
 
 | Field | Conversion in the code | Usable from the page |
 |---|---|---|
-| Ramp hig / low lim | `V`, `mV` → counts (`lock_ramp_step_update()`, l. 2027-2043) | no (use *Amp. p-p* / *Offset* of the *freq* tab) |
-| PID A / B sp | `V`, `mV` → counts (l. 2156-2159, 2263-2266) | no (not tested on the board) |
-| Period of the harmonic oscillator | `s`, `seg`, `ms`, `us` → `gen_mod_hp` with the HF period, `Period = round(T / (120 · 8 ns)) − 1` (`lock_modulation_update()`, l. 2365-2373) | no |
-| Phase of the harmonic oscillator | `deg` / `g` / `°`, `rad`, `pi` → counts, 120 points per turn (l. 2353-2362) | no |
+| Ramp hig / low lim | `V`, `mV` → counts (`lock_ramp_step_update()`, l. 2134-2150) | no (use *Amp. p-p* / *Offset* of the *freq* tab) |
+| PID A / B sp | `V`, `mV` → counts (l. 2263-2266, 2370-2373) | no (not tested on the board) |
+| Period of the harmonic oscillator | `s`, `seg`, `ms`, `us` → `gen_mod_hp` with the HF period, `Period = round(T / (120 · 8 ns)) − 1` (`lock_modulation_update()`, l. 2472-2480) | no |
+| Phase of the harmonic oscillator | `deg` / `g` / `°`, `rad`, `pi` → counts, 120 points per turn (l. 2460-2469) | no |
 
 ## HF notes
 
@@ -802,13 +802,13 @@ slowly, and waits until it answers fast again.
   trace while it grows instead of staying on the window; *Reset zoom* fixes it (seen on `lock_in+pid_plus`
   2.2.0-rc2; probably older than the Ramp Controller; not checked with this App).
 - `loadParams()` keeps the window of the plot in the parameters only when its minimum is not 0
-  (`if(options.xaxes[0].min && options.xaxes[0].max)`, `index.html` l. 5413): with a window that starts at t = 0 the
+  (`if(options.xaxes[0].min && options.xaxes[0].max)`, `index.html` l. 5529): with a window that starts at t = 0 the
   parameters take the `xmin` / `xmax` of the server instead of those of the plot. Up to v2.3.20 this let a repeated
   *Force X* undo a wheel / box zoom made from t = 0 before its POST; since v2.3.21 the *Force X* is filtered
   ([Structure.md](Structure.md#time-window-of-the-plot-and-force-x)), but the rule of `loadParams()` is unchanged
   (pending for devAgent).
 - *Phase* typed with units is clipped to 120 (the register maximum is 119; the C controller corrects it), and
-  *Period* typed with units is clipped to 819100 (the register maximum is 16383) (`index.html` l. 2360, 2372); both
+  *Period* typed with units is clipped to 819100 (the register maximum is 16383) (`index.html` l. 2467, 2479); both
   conversions are unreachable from the page anyway (number fields, above).
 - The options 6-8 of *Signal for trigger* are 0 (labelled "0 (sqXo)" … since v2.3.12; they showed code text before).
 - Each change made in the page is a `POST /data`, and on Ecosystem 2.0 each one leaves an open connection in the

@@ -1,6 +1,6 @@
 # Remote control
 
-How to control `lock_in+pid_harmonic_hf` **v2.3.21** (branch `master`; nothing of the remote control changed in v2.3.21, which only changes the web page) from a program, without the web page. The registers are
+How to control `lock_in+pid_harmonic_hf` **v2.3.22** (branch `master`; nothing of the remote control changed in v2.3.21 and v2.3.22, which only change the web page) from a program, without the web page. The registers are
 described in [FPGA.md](FPGA.md); the meaning of each instrument in [App.md](App.md).
 
 The remote control is the one of `lock_in+pid_harmonic` 2.3.17 (later versions of `_h`, up to 2.3.31, did not change it; same endpoints, `c/` tools, `py/` scripts and

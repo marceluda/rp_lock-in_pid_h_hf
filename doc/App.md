@@ -1,10 +1,10 @@
 # The App: instruments and specifications
 
-`lock_in+pid_harmonic_hf` ("Harmonic Lock-in+PID HF") **v2.3.21** for the Red Pitaya STEMlab 125-14,
+`lock_in+pid_harmonic_hf` ("Harmonic Lock-in+PID HF") **v2.3.22** for the Red Pitaya STEMlab 125-14,
 Ecosystem 2.0 (tested on RedPitaya_OS 2.04-35). Branch `master`.
 
 This App is [Lock-in+PID Harmonic](https://github.com/marceluda/rp_lock-in_pid_h) (`lock_in+pid_harmonic`
-v2.3.31) with **one difference: the harmonic modulation has a period of 120 table points instead of 2520**, so
+v2.3.32) with **one difference: the harmonic modulation has a period of 120 table points instead of 2520**, so
 the modulation goes from **63.6 Hz to 1.04 MHz** (instead of 3.03 Hz to 49.6 kHz) and its phase has steps of 3°.
 Everything else (filters, PIDs, ramp, lock control, scope, registers) is the same design.
 
@@ -58,18 +58,18 @@ ctrl_B = PID B out + Ramp B (+ jump B)     → usually sent to OUT2
 ## What is different from lock_in+pid_harmonic
 
 Checked by comparing the trees of both Apps at HF v2.3.11 (`_hf` `1da4aca` against `_h` 2.3.17 `79e19eb`); the
-later versions of HF are ports of the same changes of `_h` and keep these differences (line numbers of v2.3.21):
+later versions of HF are ports of the same changes of `_h` and keep these differences (line numbers of v2.3.22):
 
 | Item | `lock_in+pid_harmonic` 2.3.17 | `lock_in+pid_harmonic_hf` 2.3.11 | Source |
 |---|---|---|---|
 | Period of the modulation (table points) | 2520 (quarter tables `data_*_ss.dat` of 630/315/210 points) | **120** (`data_sin1.dat`, `data_cos1.dat` of 30 points, `data_cos2.dat` 15, `data_cos3.dat` 10) | `lock/gen_mod_h.v` l. 27-36 (`mem_large`, `mem_f1..3`) |
 | Modulation frequency | 3.03 Hz .. 49.603 kHz | **63.58 Hz .. 1.0417 MHz** | f = 125 MHz / (120 · (`gen_mod_hp` + 1)) |
 | `gen_mod_phase` | 0..2519 (0.143° per step) | **0..119 (3° per step)** | `src/main.c` l. 361, `c/lock.txt`, `config_tool.py` |
-| `PERIOD_LEN` in the UI / remote client | 2520 | **120** (also the period of *Reset zoom* with Ext Trig = harmonic mod., `modPeriodCycles()` l. 3322) | `index.html` l. 154, `control_finn.py` l. 100 |
+| `PERIOD_LEN` in the UI / remote client | 2520 | **120** (also the period of *Reset zoom* with Ext Trig = harmonic mod., `modPeriodCycles()` l. 3429) | `index.html` l. 154, `control_finn.py` l. 100 |
 | Lock control (`lock_ctrl.v`) | trigger comparisons combinational | trigger inputs **registered** for timing (as `lock_in+pid` 2.2.6): Time trigger in the same clock as before, **Level trigger 1 clock (8 ns) later** | `lock/lock_ctrl.v` l. 96-113, 156-218 |
-| Saved configs | migrated from the old shared key `lockConfig` | **not migrated** (configs of `_h` and HF have the same keys and can not be told apart) | `index.html` l. 301-303, 6873-6876 |
+| Saved configs | migrated from the old shared key `lockConfig` | **not migrated** (configs of `_h` and HF have the same keys and can not be told apart) | `index.html` l. 302-304, 7059-7062 |
 | App name, endpoints | `lock_in+pid_harmonic` | `lock_in+pid_harmonic_hf` (`/lock_in+pid_harmonic_hf/lock`, `/osc`, ...) | `nginx.conf` |
-| Version numbering | 2.3.31 | 2.3.21 (= the changes of `_h` 2.3.10 to 2.3.31; HF 2.3.11 = `_h` 2.3.12-2.3.17, 2.3.12 = 2.3.18, 2.3.13 = 2.3.19, 2.3.14 = 2.3.21-2.3.23, 2.3.15 = 2.3.24, 2.3.16 … 2.3.21 = 2.3.26 … 2.3.31) | `CHANGELOG.md` |
+| Version numbering | 2.3.32 | 2.3.22 (= the changes of `_h` 2.3.10 to 2.3.32; HF 2.3.11 = `_h` 2.3.12-2.3.17, 2.3.12 = 2.3.18, 2.3.13 = 2.3.19, 2.3.14 = 2.3.21-2.3.23, 2.3.15 = 2.3.24, 2.3.16 … 2.3.22 = 2.3.26 … 2.3.32) | `CHANGELOG.md` |
 
 Not different: `lock.v` (only comments), the low-pass filters (`LP_filter3.v`), PIDs, ramp, scope, register map
 (same 99 registers and addresses: `lock_control` 0x18, `lock_status` 0x1C), C controller (except the phase
@@ -210,8 +210,8 @@ configurations: 49.6 kHz and 104.2 kHz with n = 1 (607 Hz), order 2 (`test_files
 web page (tabs *period* / *freq*, *Lock osc. screen*: [Usage.md](Usage.md#ramp-controller)). `gen_ramp.v` is the same
 file as in `lock_in+pid_harmonic` and `lock_in+pid_plus` (md5 `794ad115…`). The relations below are those of
 CHANGELOG v2.3.21, checked against a cycle model of `gen_ramp.v` (`test/ramp_ui_sim.js`) and on the RTL
-(`test/ramp_mod_period_sim.sh`); in the page they are the `[RAMP CALC]` block of `index.html` (l. 3413-3639; the
-period, `rampPeriodCycles()`, l. 3215).
+(`test/ramp_mod_period_sim.sh`); in the page they are the `[RAMP CALC]` block of `index.html` (l. 3520-3746; the
+period, `rampPeriodCycles()`, l. 3322).
 
 | Item | Value |
 |---|---|
@@ -221,8 +221,8 @@ period, `rampPeriodCycles()`, l. 3215).
 | Steps per period N | triangle **N = 2 · (hig − low)**; sawtooth **N = (hig − low) + 1** (the jump back is one step). One period goes from scan floor to scan floor |
 | Period, frequency | **T = N · (`ramp_step` + 1) · 8 ns**, **f = 125 MHz / (N · (`ramp_step` + 1))**. E.g. ±5000, `ramp_step` = 400, triangle → 64.16 ms, 15.586 Hz (test config `lock_mode`); `ramp_step` = 124999 triangle → 20.00 s ([68.7 s range](Usage.md#oscilloscope)); Amp. 8000 triangle, step 77 → 100.1603 Hz (board test v2.3.21); defaults (±5000, step 0) → 6250 Hz |
 | Frequency range | from 125 MHz / (N · $2^{31}$) (largest step used by the page) to 125 MHz / N (step 0): for ±5000 (N = 20000, triangle) 2.9 µHz … 6.25 kHz. The resolution is that of the integer step: coarse near step 0 (e.g. Amp. 8000: 7812.5, 3906, 2604 Hz for steps 0, 1, 2) |
-| Amplitude, offset (tab *freq*) | Amp. p-p = hig − low (counts; mVpp = Amp · 1000 / 8192); Offset = floor((hig + low) / 2). Inverse: low = Offset − floor(Amp / 2), hig = low + Amp (exact round trip, odd amplitudes too) (`rampAmpOffOf()` / `rampLimsOf()`, `index.html` l. 3486-3493) |
-| `ramp_step` as a parameter | the C controller keeps it as a float32 (`src/main.c` l. 365, parameter table of `float` values) and `lock.c` writes `(int)value` (l. 291): above $2^{24}$ only the integers of a float32 reach the register (2, 4 … 128 apart). The page only uses such steps, at most $2^{31}-128$ = 2147483520 (`ramp_step_max`, `index.html` l. 3425), in both tabs. The register itself is 32 bits (`lock.v` l. 67) |
+| Amplitude, offset (tab *freq*) | Amp. p-p = hig − low (counts; mVpp = Amp · 1000 / 8192); Offset = floor((hig + low) / 2). Inverse: low = Offset − floor(Amp / 2), hig = low + Amp (exact round trip, odd amplitudes too) (`rampAmpOffOf()` / `rampLimsOf()`, `index.html` l. 3593-3600) |
+| `ramp_step` as a parameter | the C controller keeps it as a float32 (`src/main.c` l. 365, parameter table of `float` values) and `lock.c` writes `(int)value` (l. 291): above $2^{24}$ only the integers of a float32 reach the register (2, 4 … 128 apart). The page only uses such steps, at most $2^{31}-128$ = 2147483520 (`ramp_step_max`, `index.html` l. 3532), in both tabs. The register itself is 32 bits (`lock.v` l. 67) |
 | Second output | `ramp_B = ramp_A · ramp_B_factor / 4096` (factor −4096..4096 in the UI, i.e. −1..1) |
 | Triggers | "Scan floor" (low limit reached) and "Scan ceil" (high limit), for the scope and for the time trigger of the lock (`gen_ramp.v` l. 173-174) |
 | Enable | runs while `ramp_enable` (Ramp panel, "Scan enable" checkbox) **and** the ramp enable of the lock control ("Scan enable" button) are on; `ramp_reset` holds it at 0 |

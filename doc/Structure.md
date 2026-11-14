@@ -1,6 +1,6 @@
 # Internal structure
 
-How `lock_in+pid_harmonic_hf` v2.3.21 (branch `master`) is built (the same structure as `lock_in+pid_harmonic` 2.3.31; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
+How `lock_in+pid_harmonic_hf` v2.3.22 (branch `master`) is built (the same structure as `lock_in+pid_harmonic` 2.3.32; only the modulation generator and the trigger inputs of the lock control differ): the three layers (web page, server, FPGA), how they talk, and
 how the instruments are connected inside the FPGA. Registers: [FPGA.md](FPGA.md). Specifications:
 [App.md](App.md). Source tree and build: [Devel.md](Devel.md).
 
@@ -83,15 +83,15 @@ chunk (`configLoadApplyX()`, v2.3.11).
 Ramp Controller (v2.3.21, page only, ported from `lock_in+pid_harmonic` 2.3.31 / `lock_in+pid_plus` 2.2.0): the tabs
 *period* / *freq* and *Lock osc. screen* are the `[RAMP CALC]` (pure functions: period, frequency, f → step,
 amplitude / offset ↔ limits, zoom → limits; also run by `test/ramp_ui_sim.js`) and `[RAMP UI]` blocks of `index.html`
-(l. 3413-3639 and 3641-3951; the period of the ramp, `rampPeriodCycles()`, is in `[TRIG FROM GRAPH]`, l. 3215, and the
+(l. 3520-3746 and 3748-4058; the period of the ramp, `rampPeriodCycles()`, is in `[TRIG FROM GRAPH]`, l. 3322, and the
 windows of *Reset zoom* / *Lock osc. screen*, `resetZoomWindow()` and the whole / half cycle `resetZoomCycleNext()`, in
-`[RESET ZOOM]`, l. 3300-3411, with `modPeriodCycles()` = `PERIOD_LEN`·(hp+1) = 120·(hp+1) cycles for harmonic mod.,
-l. 3322). They only write the existing parameters `lock_ramp_step`, `lock_ramp_low_lim`, `lock_ramp_hig_lim` (one POST)
+`[RESET ZOOM]`, l. 3407-3518, with `modPeriodCycles()` = `PERIOD_LEN`·(hp+1) = 120·(hp+1) cycles for harmonic mod.,
+l. 3429). They only write the existing parameters `lock_ramp_step`, `lock_ramp_low_lim`, `lock_ramp_hig_lim` (one POST)
 and, for *Lock osc. screen*, the scope parameters `trig_source`, `trig_mode`, `lock_trig_sw` and the time window
 (`xmin` / `xmax`), as *Reset zoom* does. Their state (active tab in `localStorage` key
-`lockin_ramp_tab_lock_in+pid_harmonic_hf`, l. 3650; `ramp_ls`, `ramp_f_nominal`) is not part of the parameters nor of
+`lockin_ramp_tab_lock_in+pid_harmonic_hf`, l. 3757; `ramp_ls`, `ramp_f_nominal`) is not part of the parameters nor of
 the configs. No change in the controller nor in the FPGA ([Usage.md](Usage.md#ramp-controller)). The *Ramp period*
-field is a text field whose parser is in `input_unit_parsers` (l. 2468-2471, `rampStepParseField()` → `rampParseStep()`),
+field is a text field whose parser is in `input_unit_parsers` (l. 2575-2578, `rampStepParseField()` → `rampParseStep()`),
 like the *Time trigger* / *Level trigger* fields.
 
 ### Time window of the plot and Force X
@@ -109,14 +109,20 @@ same as in `lock_in+pid_harmonic` 2.3.31.
 Up to v2.3.20 the page applied the forceX of every GET. A GET that was in flight when the page set a new window
 (the second click of *Reset zoom*, 0 … T/2) brought ~70 ms later the window of the first click; and the repeated flag
 undid a wheel / box zoom made from t = 0 during the 250 ms before its POST (found on `lock_in+pid_plus` 2.2.0-rc3,
-2 of 4 tries). Since **v2.3.21** the `[FORCEX]` block (`index.html` l. 332-359) filters it:
+2 of 4 tries). Since **v2.3.21** the `[FORCEX]` block (`index.html` l. 333-466, extended in v2.3.22, see below) filters it:
 
 | Piece | Where | What it does |
 |---|---|---|
-| `xwin_gen` / `xWindowLocal()` | l. 346-348 | counter of "the page touched the X window": +1 in `lockSetXWindow()` (l. 4031-4032, used by Reset zoom, Lock osc. screen, Capture Lock), `xWindowToParams()` (l. 5095-5096), X± (l. 553), the X offset buttons (l. 622), the X zoom of the wheel (l. 5144), and at the start (l. 5905) and at the answer (l. 5928) of every POST |
-| `get_xgen` | l. 4795 | value of `xwin_gen` when a `GET /data` starts (as `get_epoch` = `plot_epoch` for the data, v2.3.14 = `_h` v2.3.23, l. 331) |
-| `getForceXApply(p, get_epoch, get_xgen)` | l. 351-358, used at l. 4894 | the forceX of a GET answer is applied only if `forcex_flag` = 1, the GET started after the last Reset zoom was answered (`get_epoch === plot_epoch`), nothing touched the X window nor sent / got a POST since the GET started (`get_xgen === xwin_gen`), and its window (`xmin`, `xmax`, `time_units`: `forceXKey()`) is not the one of the last forceX applied |
-| `forcex_last` | l. 347; set at l. 5955 | the forceX of a POST answer is applied as before and remembered, so the GETs that repeat it do not apply it again |
+| `xwin_gen`, `xWindowLocal()`, `xWindowGen()` | l. 376, 407-415 | counter of "the X window changed". `xWindowLocal()` is called when the page sets the window itself: `lockSetXWindow()` (l. 4139, used by Reset zoom, Lock osc. screen, Capture Lock), `xWindowToParams()` (l. 5208), X± (l. 660), the X offset buttons (l. 729), the X zoom of the wheel (l. 5256); it also sets `xwin_pending` and cancels a pending resend. `xWindowGen()` (only +1) runs at the start (l. 6041) and at the answer (l. 6099) of every POST |
+| `get_xgen` | l. 4902 | value of `xwin_gen` when a `GET /data` starts (as `get_epoch` = `plot_epoch` for the data) |
+| `getForceXApply(p, get_epoch, get_xgen)` | l. 446-454, used at l. 4987 | the forceX of a GET answer is applied only if `forcex_flag` = 1, the GET started after the last Reset zoom was answered (`get_epoch === plot_epoch`), nothing touched the X window nor sent / got a POST since the GET started (`get_xgen === xwin_gen`), no window of the page is waiting to be sent (`xwin_pending`, l. 449), and its window (`xmin`, `xmax`, `time_units`: `forceXKey()`, l. 416) is not the one of the last forceX applied. An applied forceX is put on the axis before `loadParams()` (l. 4990-4994) |
+| `forceXUnitsKeep(p, applied)` | l. 459-465, used at l. 4988 | a GET answer whose forceX is not applied keeps the time units of the page (also with `forcex_flag` 0): the axis is always in `params.local.time_units` |
+| `forcex_last` | l. 377; set at l. 6131 | the forceX of a POST answer that is applied is remembered, so the GETs that repeat it do not apply it again |
+| `xgen_post`, `forceXStaleKeep(srv, at)` | l. 6042; l. 420-444, called at l. 6127 | a **stale** POST answer does not set the window (see below): the window of the axis is kept, converted to the time units of the answer, its forceX goes to `forcex_last`, and the window goes to `xwin_resend` |
+| `xwin_resend`, `xwin_resend_at`, `xwinResendDue()` | l. 378, 380, 386; used at l. 5993, 6007, 6058-6069, 6182-6189 | the window (in the units of the server) that a later POST must send, and from when. When it is due, `sendParams()` sends it even with no other change (the gate and the anti-loop guard let it through); before that, POSTs for other changes go without `xmin` / `xmax`. `.always()` queues the POST or sets `xwin_resend_timer` (l. 383). AUTO cancels it (l. 6057) |
+| `post_info.window_unsure` | `postParamsChunks(.., post_info)` l. 5936, retry without the window l. 5969-5976; `post_info` l. 6073 | the retry of a timed-out chunk goes without `xmin` / `xmax` (a chunk left empty carries `auto_flag` 0, a no-op); its answer is stale |
+| `xsent_s`, `xWindowTaken()`, `xwin_resend_tries` | l. 6071; l. 395-400; check at l. 6091-6098; l. 381, 382, 384 | every POST that sends a window (not AUTO, not Config → load) checks that the answer has it (same window in seconds within $10^{-4}$ of its width). An answer with `forcex_flag` 1 and another window is stale too, and the resend waits `forcex_hold_ms` = 1700 ms, at most `xwin_resend_max` = 3 times in a row |
+| `post_sent` | l. 406; set at l. 6077; used in `unsentChanges()` (l. 5486) and `loadParams()` (l. 5817) | the parameters of the POST in flight: for those keys a GET answer does not replace `params.local`, and `unsent_base` keeps the value sent |
 
 `plot_epoch` alone (v2.3.14) was not enough: it moves only with Reset zoom and Lock osc. screen, not with the box,
 the wheel or X±. A forceX that is not stale (e.g. another client sets 0 … 2 s and the units change) still reaches
@@ -137,6 +143,77 @@ sequenceDiagram
   Note over P: get_xgen != xwin_gen and key = forcex_last: not applied
   P->>S: POST 0..4.992 ms
   S-->>P: answer: forcex_flag 0
+```
+
+#### A POST retried after a timeout, and a window that the server does not take (v2.3.22)
+
+The nginx of Ecosystem 2.0 sometimes does not answer for ~2 s (the page shows "Cautious mode ON"; one worker blocked by
+synchronous handlers, see `reportes/nginx_close_wait.md` §1 item 6 and §2.5 in the Apps folder). A POST that falls in one
+of those hangs gets no answer within `post_chunk_timeout` = 2000 ms (l. 129), and `postParamsChunks()` sends the chunk
+again, up to `post_chunk_retries` = 2 times (l. 130; if all fail, the E3 dialog, as before). Two rules of `src/main.c`
+made that retry break the time window:
+
+- `xmin` / `xmax` are always read in the **current** units of the server; `time_units` is read-only (`"time_units", 0,
+  0, 1` in the parameter table, l. 86). If the timed-out POST was served (nginx serves it after the hang, only its answer
+  is lost), the server is already in the new units and reads the retry in them: 0 … 9984 µs became 0 … 9984 ms and the
+  server went to s (board test of the first round of the fix, `__serve = true`).
+- while `forcex_state` is 1 and younger than `FORCEX_STALE_MS` = 1500 ms (l. 470), a window more than 33× away from the
+  forced one (`ratio > 0.03`, l. 700) is not taken: the server answers its forced window again, with `forcex_flag` 1.
+
+Before v2.3.22 the answer of the retry (`forcex_flag` 1 with 0 … T) was applied like any forceX: the second click of
+*Reset zoom* (0 … T/2), made during the wait, was lost, and the POST waiting in `send_que` sent 0 … T again. Since
+v2.3.22 (only `index.html`, no change in the controller):
+
+1. **Retry without the window.** The retry of a timed-out chunk goes without `xmin` / `xmax` (all the other values are
+   absolute, so they can be sent twice) and sets `post_info.window_unsure`.
+2. **Stale answers.** The answer of a POST is stale if the page set the X window itself while it was in flight
+   (`xwin_gen` moved since `xgen_post`), if it was retried without the window, or if a resend is still waiting. A stale
+   answer does not set the window (neither its forceX nor its `xmin` / `xmax`): `forceXStaleKeep()` keeps the window of
+   the axis, converted to the units of the answer (those of the server), and the next POST sends it again.
+3. **Check of every window sent.** The answer must have the window the POST sent (`xWindowTaken()`). If it has
+   `forcex_flag` 1 and another window (the server kept its forced one), the page keeps its window and sends it again
+   after `forcex_hold_ms` = 1700 ms (> 1500 ms), up to 3 times in a row; then it takes the window of the server. While
+   that resend waits, POSTs for other changes go without `xmin` / `xmax`, and their answers do not set the window.
+   Config → load (its own window, `configLoadApplyX()`) and AUTO are not checked; AUTO cancels a pending resend.
+4. **GET /data.** While a window of the page is not sent yet (`xwin_pending`), no forceX of a GET is applied (a GET
+   that started after the second click and was answered before the retry brought the window of the first click). A GET
+   whose forceX is not applied never changes the time units of the page, so the axis is always in
+   `params.local.time_units`, the units `forceXStaleKeep()` converts from.
+5. **Other parameters.** A value changed back during a POST in flight (kp A → B, POST in flight, back to A) was lost: a
+   GET answered meanwhile with A made it look already on the server, and the answer of the POST put B back. With
+   `post_sent` it is still an unsent change when the POST is answered, and goes in the next POST. (A different new value
+   was already kept by `unsentChanges()`.)
+
+Visible effect: the second click of *Reset zoom* during a hang ends at 0 … T/2, in the units of the server; a zoom made
+less than 1.5 s after a change of units stays on the axis and reaches the server ~1.7 s later. The browser console
+shows `postParamsChunks: chunk 1/1 timed out, retrying (1/2)` and `sendParams: X window of the page not on the server:
+its answer (…) not applied, a .. b sent again` (with `in 1700 ms` when it waits). Checked by `test/forcex_race_sim.js`
+cases 5-7 (19/19, [Devel.md](Devel.md#simulations-and-tests-test)) and on RP2 with a hook that holds the answer of the next POST(s) for 2 s
+(`__hold`, `__serve`; the guide is in `devAgent.md`, 2026-11-13 23:05, Apps folder): First round (report `reportes/lock-in_pid_h_hf/2026-11-13_1848_forcex_retry.md`, retry with the same body): PASS when the held POST did not reach the server (3/3 and the variant at 1.9 s; kp 0 → 150 → 0 stays 0); the case `__serve = true` was not run in this App, and failed in pid, h2 and _h, whose `[FORCEX]` block is the same. Second round (`reportes/lock-in_pid_h_hf/2026-11-13_2312_forcex_retry2.md`, package 2.3.22-27): **PASS** — `__serve = true` with the 2nd click at 0.3 s 3/3 and at 1.9 s 3/3 (from µs and from s), two held answers with the click at 2.3 s 1/1, `__serve = false` 1/1, zoom right after the change of units 1/1 (5.32 … 178.46 µs on the axis and on the server); without hook Reset zoom alternates 9.984 / 4.992 ms, AUTO as before, no POST bursts, no console errors.
+
+```mermaid
+sequenceDiagram
+  participant P as page (index.html)
+  participant N as nginx
+  participant S as controller (main.c)
+  Note over P,S: axis in µs; click 1 of Reset zoom: 0..9984 µs
+  P->>N: POST xmin 0, xmax 9984 (µs)
+  N->>S: served after the hang
+  S-->>N: 0..9.984 ms, units ms, forcex_flag 1 (answer lost)
+  P->>P: click 2: 0..4.992 ms (xWindowLocal)
+  Note over P: no answer in 2 s: retry
+  P->>S: retry WITHOUT xmin/xmax (window_unsure)
+  S-->>P: 0..9.984 ms, forcex_flag 1
+  Note over P: stale answer: forceXStaleKeep(), axis stays 0..4.992 ms, xwin_resend
+  P->>S: POST xmin 0, xmax 4.992 (ms)
+  alt server takes it
+    S-->>P: 0..4.992 ms (xWindowTaken: ok)
+  else forced window kept (< 1.5 s, > 33x away)
+    S-->>P: forcex_flag 1, its forced window
+    Note over P: keeps 0..4.992 ms, resend in 1700 ms (at most 3 times)
+    P->>S: POST xmin 0, xmax 4.992 (ms)
+    S-->>P: 0..4.992 ms
+  end
 ```
 
 ## Server ↔ FPGA: the C controller

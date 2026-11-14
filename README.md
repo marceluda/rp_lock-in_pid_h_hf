@@ -87,7 +87,8 @@ Since 2026-10-15 the branch `master` holds the 2.x series; the 0.3.x series (FPG
   RP2. See [doc/Usage.md](doc/Usage.md#ramp-controller) and [doc/App.md](doc/App.md#ramp-generator-scan).
 - v2.3.22 (from lock_in+pid_plus 2.2.1): no lost 2nd click of *Reset zoom* when the POST of the 1st one is retried after a timeout (nginx
   hang): the answer of that POST no longer brings back the old window (*Force X*); a value changed back during a slow POST
-  is no longer lost. Web page only.
+  is no longer lost; the page checks that the server took the window it sent and sends it again if not. Web page only;
+  tested on RP2 (PASS). See [doc/Structure.md](doc/Structure.md#time-window-of-the-plot-and-force-x).
 
 ![Ramp Controller of v2.3.21: tab freq (100 Hz triangle, Amp. p-p 8000) and Lock osc. screen: the scope on Scan floor with the window 0 … T/2 = 4.992 ms, the rise of the ramp (red); the ramp was internal in this test, in1 (blue) is only the noise of the bench](.README/ramp_controller_lock_osc_screen_v2.3.21.jpg)
 - See the [CHANGELOG](CHANGELOG.md).

@@ -381,6 +381,16 @@ body (0 … 9984 in µs) was read in ms and sent the server to s, and the window
   FORCEX_STALE_MS, `GUI_XMIN`/`GUI_XMAX` in float32), new cases 6 (POST served at once with its answer lost, retry; from s
   and from µs; 2nd click before and during the retry, 1 or 2 lost answers; also not served: 16 runs) and 7 (a zoom the
   server ignores in forcex_state, sent again later): 19/19. With the first round (`--old`) 6b, 6c and 7b fail.
+- Board test (testAgent, RP2, 2026-11-13; reports in `reportes/lock-in_pid_h_hf/` of the Apps folder, hook `__hold` /
+  `__serve` that holds the answer of the next POST(s) for 2 s): first round (`2026-11-13_1848_forcex_retry.md`, package
+  of `1af3715`): PASS with the held POST not served (3/3, variant at 1.9 s, kp 0 → 150 → 0 = 0); `__serve = true` not
+  run here (it failed in pid, h2 and _h, same code). Second round (`2026-11-13_2312_forcex_retry2.md`, `98a19eb`,
+  package 2.3.22-27, tar.gz md5 `d0d84e0c…`): **PASS** — `__serve = true` with the 2nd click at 0.3 s 3/3 and at 1.9 s 3/3 (from
+  µs and from s), two held answers (click at 2.3 s) 1/1, `__serve = false` 1/1, zoom right after the change of units 1/1;
+  without hook Reset zoom alternates 9.984 / 4.992 ms, AUTO as before, no POST bursts, no console errors. The hangs of
+  nginx that trigger the retry: `reportes/nginx_close_wait.md` (§1 item 6, §2.5).
+- Documentation (`doc/Structure.md`: section *A POST retried after a timeout…*; `doc/Devel.md`, READMEs, line numbers
+  of `index.html` in `doc/*.md`) updated for v2.3.22 in the commit that carries the tag `v2.3.22`.
 
 v2.3.21 - 2026-11-13 - Ramp Controller of lock_in+pid_plus 2.2.0: tabs period / freq, Ramp period in s / ms, Lock osc. screen, Reset zoom whole / half, no stale Force X (web page only, no FPGA / C change; as lock_in+pid_harmonic 2.3.31)
 

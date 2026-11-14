@@ -1,7 +1,7 @@
 # FPGA register map
 
-Register map of the FPGA design of `lock_in+pid_harmonic_hf` **v2.3.21** (branch `master`, Vivado 2020.1; the FPGA image is the one of v2.3.14 … v2.3.20,
-v2.3.21 changes only the web page; RedPitaya-FPGA project `v0.94`, model Z10 / STEMlab 125-14).
+Register map of the FPGA design of `lock_in+pid_harmonic_hf` **v2.3.22** (branch `master`, Vivado 2020.1; the FPGA image is the one of v2.3.14 … v2.3.20,
+v2.3.21 and v2.3.22 change only the web page; RedPitaya-FPGA project `v0.94`, model Z10 / STEMlab 125-14).
 
 The map is **the same as in `lock_in+pid_harmonic` 2.3.31** (same 99 registers of the lock module, same
 addresses, same scope). Only the meaning of `gen_mod_phase` and `gen_mod_hp` changes (period of 120 points, see
@@ -185,7 +185,7 @@ The 28-bit outputs scale as `X_28 ≈ A · 2^11`, where `A` is the amplitude (in
 
 Ramp period: `T = N · (ramp_step + 1) · 8 ns`, `f = 125 MHz / (N · (ramp_step + 1))`, with N = 2 · (ramp_hig_lim −
 ramp_low_lim) for the triangle and N = (ramp_hig_lim − ramp_low_lim) + 1 for the sawtooth (the jump back is one step)
-(CHANGELOG v2.3.21, `gen_ramp.v` l. 104-105; `rampPeriodCycles()` in `index.html` l. 3215). Up to v2.3.20 the page and
+(CHANGELOG v2.3.21, `gen_ramp.v` l. 104-105; `rampPeriodCycles()` in `index.html` l. 3322). Up to v2.3.20 the page and
 this page used `(hig − low) · (step + 1) · 8 ns · (2 − sawtooth)`, one step short for the sawtooth. Since v2.3.21 the
 web page can also set the ramp by frequency, amplitude and offset, and *Ramp period* takes the whole period with
 units ([App.md](App.md#ramp-generator-scan)); the registers are the same. The page limits `ramp_step` to
